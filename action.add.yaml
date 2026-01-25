@@ -1,0 +1,22 @@
+runtime: plugin
+action:
+  title: Add Node Platform
+  description: "Create a new platform scaffold with nodes/ directory for node provisioning"
+  arguments:
+    - name: name
+      title: Name
+      description: The name of the platform to create
+      required: true
+  options:
+    - name: provider
+      shorthand: p
+      title: Provider
+      description: Infrastructure provider (scaleway, hetzner, aws, ovh, manual)
+      type: string
+      default: "manual"
+    - name: domain
+      shorthand: d
+      title: Domain
+      description: Base domain for the platform
+      type: string
+      default: ""

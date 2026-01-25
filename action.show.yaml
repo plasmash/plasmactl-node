@@ -1,0 +1,9 @@
+runtime: plugin
+action:
+  title: Show Node Platform
+  description: "Show details of a specific platform and its nodes"
+  arguments:
+    - name: name
+      title: Name
+      description: The name of the platform to show
+      required: true

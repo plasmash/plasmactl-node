@@ -1,0 +1,4 @@
+runtime: plugin
+action:
+  title: List Nodes
+  description: "List all platforms and their nodes in the inst/ directory"

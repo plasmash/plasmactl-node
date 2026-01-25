@@ -1,0 +1,21 @@
+runtime: plugin
+action:
+  title: Destroy Nodes
+  description: "Destroy node infrastructure for a platform via Terraform"
+  arguments:
+    - name: name
+      title: Name
+      description: The name of the platform whose nodes to destroy
+      required: true
+  options:
+    - name: force
+      shorthand: f
+      title: Force
+      description: Skip confirmation prompt
+      type: boolean
+      default: false
+    - name: keep-nodes
+      title: Keep Nodes
+      description: Keep node files after destroying infrastructure
+      type: boolean
+      default: false

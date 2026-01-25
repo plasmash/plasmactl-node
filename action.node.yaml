@@ -1,0 +1,32 @@
+runtime: plugin
+action:
+  title: Register Node
+  description: "Manually register a node to a platform (for manual provider)"
+  arguments:
+    - name: name
+      title: Name
+      description: The name of the platform
+      required: true
+  options:
+    - name: hostname
+      shorthand: h
+      title: Hostname
+      description: The hostname for the node
+      type: string
+      required: true
+    - name: public-ip
+      title: Public IP
+      description: The public IP address of the node
+      type: string
+      required: true
+    - name: private-ip
+      title: Private IP
+      description: The private IP address of the node (auto-assigned if not provided)
+      type: string
+      default: ""
+    - name: chassis
+      shorthand: c
+      title: Chassis
+      description: "Chassis assignments for the node (can be specified multiple times)"
+      type: stringArray
+      default: []

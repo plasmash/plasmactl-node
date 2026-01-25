@@ -1,0 +1,26 @@
+runtime: plugin
+action:
+  title: Provision Nodes
+  description: "Provision infrastructure via OpenTofu/Terraform and generate node files"
+  arguments:
+    - name: name
+      title: Name
+      description: The name of the platform to provision nodes for
+      required: true
+  options:
+    - name: chassis
+      shorthand: c
+      title: Chassis
+      description: "Chassis specification in format: chassis.path:offer_type:count (can be specified multiple times)"
+      type: stringArray
+      default: []
+    - name: dry-run
+      title: Dry Run
+      description: Generate Terraform files but don't apply
+      type: boolean
+      default: false
+    - name: auto-approve
+      title: Auto Approve
+      description: Skip interactive approval before applying
+      type: boolean
+      default: false
