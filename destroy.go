@@ -35,7 +35,7 @@ func (a *destroyAction) SetTerm(term *launchr.Terminal) {
 
 // Execute runs the env:destroy action
 func (a *destroyAction) Execute() error {
-	envDir := filepath.Join("env", a.name)
+	envDir := filepath.Join("inst", a.name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 	terraformDir := filepath.Join(envDir, ".terraform")

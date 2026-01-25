@@ -38,7 +38,7 @@ func (a *provisionAction) SetTerm(term *launchr.Terminal) {
 
 // Execute runs the env:provision action
 func (a *provisionAction) Execute() error {
-	envDir := filepath.Join("env", a.name)
+	envDir := filepath.Join("inst", a.name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 

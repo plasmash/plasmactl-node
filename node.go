@@ -34,7 +34,7 @@ func (a *nodeAction) SetTerm(term *launchr.Terminal) {
 
 // Execute runs the env:node action
 func (a *nodeAction) Execute() error {
-	envDir := filepath.Join("env", a.envName)
+	envDir := filepath.Join("inst", a.envName)
 	nodesDir := filepath.Join(envDir, "nodes")
 	platformFile := filepath.Join(envDir, "platform.yaml")
 

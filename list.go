@@ -28,7 +28,7 @@ func (a *listAction) SetTerm(term *launchr.Terminal) {
 
 // Execute runs the env:list action
 func (a *listAction) Execute() error {
-	envDir := "env"
+	envDir := "inst"
 
 	// Check if env directory exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {

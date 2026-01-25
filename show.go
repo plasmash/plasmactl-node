@@ -30,7 +30,7 @@ func (a *showAction) SetTerm(term *launchr.Terminal) {
 
 // Execute runs the env:show action
 func (a *showAction) Execute() error {
-	envDir := filepath.Join("env", a.name)
+	envDir := filepath.Join("inst", a.name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 
