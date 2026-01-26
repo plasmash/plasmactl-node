@@ -1,4 +1,4 @@
-package plasmactlnode
+package action
 
 import (
 	"context"
@@ -9,42 +9,32 @@ import (
 	"strings"
 
 	"github.com/launchrctl/keyring"
-	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
-// provisionAction implements the env:provision command
-type provisionAction struct {
-	log  *launchr.Logger
-	term *launchr.Terminal
+// Provision implements the node:provision command
+type Provision struct {
+	action.WithLogger
+	action.WithTerm
 
-	keyring     keyring.Keyring
-	name        string
-	chassisSpec []string
-	dryRun      bool
-	autoApprove bool
+	Keyring     keyring.Keyring
+	Name        string
+	ChassisSpec []string
+	DryRun      bool
+	AutoApprove bool
 }
 
-// SetLogger sets the logger for the action
-func (a *provisionAction) SetLogger(log *launchr.Logger) {
-	a.log = log
-}
-
-// SetTerm sets the terminal for the action
-func (a *provisionAction) SetTerm(term *launchr.Terminal) {
-	a.term = term
-}
-
-// Execute runs the env:provision action
-func (a *provisionAction) Execute() error {
-	envDir := filepath.Join("inst", a.name)
+// Execute runs the node:provision action
+func (p *Provision) Execute() error {
+	envDir := filepath.Join("inst", p.Name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 
 	// Check if environment exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {
-		return fmt.Errorf("environment %q not found", a.name)
+		return fmt.Errorf("environment %q not found", p.Name)
 	}
 
 	// Read platform.yaml
@@ -59,7 +49,7 @@ func (a *provisionAction) Execute() error {
 	}
 
 	// Parse chassis specifications from command line or platform.yaml
-	specs, err := a.parseChassisSpecs(platform)
+	specs, err := p.parseChassisSpecs(platform)
 	if err != nil {
 		return fmt.Errorf("failed to parse chassis specs: %w", err)
 	}
@@ -68,12 +58,12 @@ func (a *provisionAction) Execute() error {
 		return fmt.Errorf("no chassis specifications provided (use -c flag or configure chassis in platform.yaml)")
 	}
 
-	a.term.Info().Printfln("Provisioning environment %q with provider %q", a.name, platform.Infrastructure.Provider)
+	p.Term().Info().Printfln("Provisioning environment %q with provider %q", p.Name, platform.Infrastructure.Provider)
 
 	// Provider-specific provisioning
 	switch platform.Infrastructure.Provider {
 	case "scaleway":
-		return a.provisionScaleway(envDir, nodesDir, platform, specs)
+		return p.provisionScaleway(envDir, nodesDir, platform, specs)
 	case "hetzner":
 		return fmt.Errorf("hetzner provider not yet implemented")
 	case "aws":
@@ -88,11 +78,11 @@ func (a *provisionAction) Execute() error {
 }
 
 // parseChassisSpecs parses chassis specifications from CLI or platform.yaml
-func (a *provisionAction) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, error) {
+func (p *Provision) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, error) {
 	var specs []ChassisSpec
 
 	// First, use CLI specifications if provided
-	for _, spec := range a.chassisSpec {
+	for _, spec := range p.ChassisSpec {
 		parts := strings.Split(spec, ":")
 		if len(parts) != 3 {
 			return nil, fmt.Errorf("invalid chassis spec %q - expected format chassis:offer:count", spec)
@@ -127,7 +117,7 @@ func (a *provisionAction) parseChassisSpecs(platform types.Platform) ([]ChassisS
 }
 
 // provisionScaleway provisions infrastructure using Scaleway Dedibox
-func (a *provisionAction) provisionScaleway(envDir, nodesDir string, platform types.Platform, specs []ChassisSpec) error {
+func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Platform, specs []ChassisSpec) error {
 	ctx := context.Background()
 
 	// Get API token
@@ -137,7 +127,7 @@ func (a *provisionAction) provisionScaleway(envDir, nodesDir string, platform ty
 		keyName := strings.TrimPrefix(apiToken, "{{ .keyring.")
 		keyName = strings.TrimSuffix(keyName, " }}")
 
-		token, err := a.keyring.GetForURL("scaleway")
+		token, err := p.Keyring.GetForURL("scaleway")
 		if err != nil {
 			return fmt.Errorf("failed to get API token from keyring: %w", err)
 		}
@@ -145,58 +135,58 @@ func (a *provisionAction) provisionScaleway(envDir, nodesDir string, platform ty
 	}
 
 	// Create Terraform manager
-	tfManager, err := NewTerraformManager(envDir, a.dryRun, a.autoApprove)
+	tfManager, err := NewTerraformManager(envDir, p.DryRun, p.AutoApprove)
 	if err != nil {
 		return fmt.Errorf("failed to create terraform manager: %w", err)
 	}
 
-	a.term.Info().Printfln("Generating Terraform configuration...")
+	p.Term().Info().Printfln("Generating Terraform configuration...")
 
 	// Generate HCL
-	if err := tfManager.GenerateHCL(a.name, specs, apiToken); err != nil {
+	if err := tfManager.GenerateHCL(p.Name, specs, apiToken); err != nil {
 		return fmt.Errorf("failed to generate terraform HCL: %w", err)
 	}
 
-	a.term.Info().Printfln("Generated: %s/main.tf", tfManager.GetWorkDir())
+	p.Term().Info().Printfln("Generated: %s/main.tf", tfManager.GetWorkDir())
 
 	// Initialize Terraform
-	a.term.Info().Println("Initializing Terraform...")
+	p.Term().Info().Println("Initializing Terraform...")
 	if err := tfManager.Init(ctx); err != nil {
 		return fmt.Errorf("terraform init failed: %w", err)
 	}
 
 	// Plan
-	a.term.Info().Println("Planning changes...")
+	p.Term().Info().Println("Planning changes...")
 	hasChanges, err := tfManager.Plan(ctx)
 	if err != nil {
 		return fmt.Errorf("terraform plan failed: %w", err)
 	}
 
 	if !hasChanges {
-		a.term.Info().Println("No changes needed")
+		p.Term().Info().Println("No changes needed")
 		return nil
 	}
 
-	if a.dryRun {
-		a.term.Warning().Println("Dry run - skipping apply")
-		a.term.Info().Printfln("Review the plan at: %s", tfManager.GetWorkDir())
+	if p.DryRun {
+		p.Term().Warning().Println("Dry run - skipping apply")
+		p.Term().Info().Printfln("Review the plan at: %s", tfManager.GetWorkDir())
 		return nil
 	}
 
 	// Confirm if not auto-approve
-	if !a.autoApprove {
-		a.term.Warning().Println("This will provision infrastructure (incurring costs)")
+	if !p.AutoApprove {
+		p.Term().Warning().Println("This will provision infrastructure (incurring costs)")
 		// TODO: Add interactive confirmation
 	}
 
 	// Apply
-	a.term.Info().Println("Applying changes...")
+	p.Term().Info().Println("Applying changes...")
 	if err := tfManager.Apply(ctx); err != nil {
 		return fmt.Errorf("terraform apply failed: %w", err)
 	}
 
 	// Get outputs and generate node files
-	a.term.Info().Println("Generating node files...")
+	p.Term().Info().Println("Generating node files...")
 	servers, err := tfManager.GetOutputs(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get terraform outputs: %w", err)
@@ -248,13 +238,13 @@ func (a *provisionAction) provisionScaleway(envDir, nodesDir string, platform ty
 			return fmt.Errorf("failed to write node file %s: %w", nodeFile, err)
 		}
 
-		a.term.Success().Printfln("Created node: %s (%s)", server.Hostname, server.PublicIP)
+		p.Term().Success().Printfln("Created node: %s (%s)", server.Hostname, server.PublicIP)
 	}
 
-	a.term.Success().Printfln("Provisioned %d nodes", len(servers))
+	p.Term().Success().Printfln("Provisioned %d nodes", len(servers))
 
 	// Update platform.yaml with chassis configuration if it was provided via CLI
-	if len(a.chassisSpec) > 0 {
+	if len(p.ChassisSpec) > 0 {
 		platform.Chassis = make(map[string][]types.ChassisProfile)
 		for _, spec := range specs {
 			platform.Chassis[spec.Chassis] = append(platform.Chassis[spec.Chassis], types.ChassisProfile{
@@ -265,13 +255,13 @@ func (a *provisionAction) provisionScaleway(envDir, nodesDir string, platform ty
 
 		data, err := yaml.Marshal(platform)
 		if err != nil {
-			a.log.Warn("Failed to update platform.yaml", "error", err)
+			p.Log().Warn("Failed to update platform.yaml", "error", err)
 		} else {
 			platformFile := filepath.Join(envDir, "platform.yaml")
 			if err := os.WriteFile(platformFile, data, 0644); err != nil {
-				a.log.Warn("Failed to write platform.yaml", "error", err)
+				p.Log().Warn("Failed to write platform.yaml", "error", err)
 			} else {
-				a.term.Info().Println("Updated platform.yaml with chassis configuration")
+				p.Term().Info().Println("Updated platform.yaml with chassis configuration")
 			}
 		}
 	}

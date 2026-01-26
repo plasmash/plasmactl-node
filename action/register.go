@@ -1,46 +1,36 @@
-package plasmactlnode
+package action
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
-// nodeAction implements the env:node command
-type nodeAction struct {
-	log  *launchr.Logger
-	term *launchr.Terminal
+// Register implements the node:register command
+type Register struct {
+	action.WithLogger
+	action.WithTerm
 
-	envName   string
-	hostname  string
-	publicIP  string
-	privateIP string
-	chassis   []string
+	EnvName   string
+	Hostname  string
+	PublicIP  string
+	PrivateIP string
+	Chassis   []string
 }
 
-// SetLogger sets the logger for the action
-func (a *nodeAction) SetLogger(log *launchr.Logger) {
-	a.log = log
-}
-
-// SetTerm sets the terminal for the action
-func (a *nodeAction) SetTerm(term *launchr.Terminal) {
-	a.term = term
-}
-
-// Execute runs the env:node action
-func (a *nodeAction) Execute() error {
-	envDir := filepath.Join("inst", a.envName)
+// Execute runs the node:register action
+func (r *Register) Execute() error {
+	envDir := filepath.Join("inst", r.EnvName)
 	nodesDir := filepath.Join(envDir, "nodes")
 	platformFile := filepath.Join(envDir, "platform.yaml")
 
 	// Check if environment exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {
-		return fmt.Errorf("environment %q not found", a.envName)
+		return fmt.Errorf("environment %q not found", r.EnvName)
 	}
 
 	// Read platform.yaml to get network configuration
@@ -55,7 +45,7 @@ func (a *nodeAction) Execute() error {
 	}
 
 	// Allocate private IP if not provided
-	privateIP := a.privateIP
+	privateIP := r.PrivateIP
 	if privateIP == "" {
 		allocator, err := NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
 		if err != nil {
@@ -66,13 +56,13 @@ func (a *nodeAction) Execute() error {
 		if err != nil {
 			return fmt.Errorf("failed to allocate private IP: %w", err)
 		}
-		a.term.Info().Printfln("Auto-assigned private IP: %s", privateIP)
+		r.Term().Info().Printfln("Auto-assigned private IP: %s", privateIP)
 	}
 
 	// Check for hostname collision
-	nodeFile := filepath.Join(nodesDir, a.hostname+".yaml")
+	nodeFile := filepath.Join(nodesDir, r.Hostname+".yaml")
 	if _, err := os.Stat(nodeFile); !os.IsNotExist(err) {
-		return fmt.Errorf("node %q already exists", a.hostname)
+		return fmt.Errorf("node %q already exists", r.Hostname)
 	}
 
 	// Ensure nodes directory exists
@@ -81,7 +71,7 @@ func (a *nodeAction) Execute() error {
 	}
 
 	// Create node configuration
-	node := types.NewNode(a.hostname, a.chassis, a.publicIP, privateIP)
+	node := types.NewNode(r.Hostname, r.Chassis, r.PublicIP, privateIP)
 	node.AddChassisLabels()
 
 	data, err := yaml.Marshal(node)
@@ -93,13 +83,13 @@ func (a *nodeAction) Execute() error {
 		return fmt.Errorf("failed to write node file: %w", err)
 	}
 
-	a.term.Success().Printfln("Created node %s", a.hostname)
-	a.term.Info().Printfln("  Public IP:  %s", a.publicIP)
-	a.term.Info().Printfln("  Private IP: %s", privateIP)
-	if len(a.chassis) > 0 {
-		a.term.Info().Printfln("  Chassis:    %v", a.chassis)
+	r.Term().Success().Printfln("Created node %s", r.Hostname)
+	r.Term().Info().Printfln("  Public IP:  %s", r.PublicIP)
+	r.Term().Info().Printfln("  Private IP: %s", privateIP)
+	if len(r.Chassis) > 0 {
+		r.Term().Info().Printfln("  Chassis:    %v", r.Chassis)
 	}
-	a.term.Info().Printfln("  File:       %s", nodeFile)
+	r.Term().Info().Printfln("  File:       %s", nodeFile)
 
 	return nil
 }

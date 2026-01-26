@@ -1,4 +1,4 @@
-package plasmactlnode
+package action
 
 import (
 	"context"
@@ -7,42 +7,32 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/keyring"
-	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
-// destroyAction implements the env:destroy command
-type destroyAction struct {
-	log  *launchr.Logger
-	term *launchr.Terminal
+// Destroy implements the node:destroy command
+type Destroy struct {
+	action.WithLogger
+	action.WithTerm
 
-	keyring   keyring.Keyring
-	name      string
-	force     bool
-	keepNodes bool
+	Keyring   keyring.Keyring
+	Name      string
+	Force     bool
+	KeepNodes bool
 }
 
-// SetLogger sets the logger for the action
-func (a *destroyAction) SetLogger(log *launchr.Logger) {
-	a.log = log
-}
-
-// SetTerm sets the terminal for the action
-func (a *destroyAction) SetTerm(term *launchr.Terminal) {
-	a.term = term
-}
-
-// Execute runs the env:destroy action
-func (a *destroyAction) Execute() error {
-	envDir := filepath.Join("inst", a.name)
+// Execute runs the node:destroy action
+func (d *Destroy) Execute() error {
+	envDir := filepath.Join("inst", d.Name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 	terraformDir := filepath.Join(envDir, ".terraform")
 
 	// Check if environment exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {
-		return fmt.Errorf("environment %q not found", a.name)
+		return fmt.Errorf("environment %q not found", d.Name)
 	}
 
 	// Read platform.yaml
@@ -58,27 +48,27 @@ func (a *destroyAction) Execute() error {
 
 	// Check if provider is manual
 	if platform.Infrastructure.Provider == "manual" {
-		a.term.Warning().Println("Cannot destroy infrastructure for manual provider")
-		a.term.Info().Println("Remove node files manually if needed")
+		d.Term().Warning().Println("Cannot destroy infrastructure for manual provider")
+		d.Term().Info().Println("Remove node files manually if needed")
 		return nil
 	}
 
 	// Check if terraform state exists
 	if _, err := os.Stat(filepath.Join(terraformDir, "terraform.tfstate")); os.IsNotExist(err) {
-		a.term.Warning().Println("No Terraform state found - nothing to destroy")
+		d.Term().Warning().Println("No Terraform state found - nothing to destroy")
 		return nil
 	}
 
 	// Confirm destruction
-	if !a.force {
-		a.term.Warning().Printfln("This will DESTROY all infrastructure for environment %q", a.name)
-		a.term.Warning().Println("This action cannot be undone!")
+	if !d.Force {
+		d.Term().Warning().Printfln("This will DESTROY all infrastructure for environment %q", d.Name)
+		d.Term().Warning().Println("This action cannot be undone!")
 		// TODO: Add interactive confirmation
-		a.term.Info().Println("Use --force to skip this confirmation")
+		d.Term().Info().Println("Use --force to skip this confirmation")
 		return fmt.Errorf("destruction cancelled - use --force to proceed")
 	}
 
-	a.term.Warning().Printfln("Destroying infrastructure for environment %q", a.name)
+	d.Term().Warning().Printfln("Destroying infrastructure for environment %q", d.Name)
 
 	ctx := context.Background()
 
@@ -89,21 +79,21 @@ func (a *destroyAction) Execute() error {
 	}
 
 	// Initialize Terraform (in case state is missing)
-	a.term.Info().Println("Initializing Terraform...")
+	d.Term().Info().Println("Initializing Terraform...")
 	if err := tfManager.Init(ctx); err != nil {
 		return fmt.Errorf("terraform init failed: %w", err)
 	}
 
 	// Destroy
-	a.term.Info().Println("Destroying infrastructure...")
+	d.Term().Info().Println("Destroying infrastructure...")
 	if err := tfManager.Destroy(ctx); err != nil {
 		return fmt.Errorf("terraform destroy failed: %w", err)
 	}
 
-	a.term.Success().Println("Infrastructure destroyed")
+	d.Term().Success().Println("Infrastructure destroyed")
 
 	// Remove node files unless --keep-nodes
-	if !a.keepNodes {
+	if !d.KeepNodes {
 		entries, err := os.ReadDir(nodesDir)
 		if err == nil {
 			for _, entry := range entries {
@@ -112,22 +102,22 @@ func (a *destroyAction) Execute() error {
 				}
 				nodePath := filepath.Join(nodesDir, entry.Name())
 				if err := os.Remove(nodePath); err != nil {
-					a.log.Warn("Failed to remove node file", "file", nodePath, "error", err)
+					d.Log().Warn("Failed to remove node file", "file", nodePath, "error", err)
 				} else {
-					a.term.Info().Printfln("Removed: %s", nodePath)
+					d.Term().Info().Printfln("Removed: %s", nodePath)
 				}
 			}
 		}
-		a.term.Info().Println("Node files removed")
+		d.Term().Info().Println("Node files removed")
 	} else {
-		a.term.Info().Println("Node files kept (--keep-nodes)")
+		d.Term().Info().Println("Node files kept (--keep-nodes)")
 	}
 
 	// Clean up terraform directory
 	if err := os.RemoveAll(terraformDir); err != nil {
-		a.log.Warn("Failed to remove terraform directory", "error", err)
+		d.Log().Warn("Failed to remove terraform directory", "error", err)
 	} else {
-		a.term.Info().Println("Terraform state cleaned up")
+		d.Term().Info().Println("Terraform state cleaned up")
 	}
 
 	return nil

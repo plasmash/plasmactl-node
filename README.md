@@ -6,41 +6,49 @@ A [Launchr](https://github.com/launchrctl/launchr) plugin for [Plasmactl](https:
 
 `plasmactl-node` handles the provisioning and management of physical/virtual machines (nodes) that form the infrastructure for Plasma platforms. It integrates with cloud providers via Terraform/OpenTofu to automate infrastructure provisioning.
 
-## Features
-
-- **Infrastructure Provisioning**: Provision nodes via Terraform/OpenTofu
-- **Multi-Provider Support**: Scaleway Dedibox, Hetzner, OVH, AWS, GCP, Azure
-- **Chassis-Driven Allocation**: Map logical architecture to physical resources
-- **Manual Node Registration**: Support for on-premise/manual infrastructure
-- **Node Lifecycle Management**: Create, list, show, destroy nodes
-
 ## Commands
+
+### node:add
+
+Create a platform scaffold with nodes directory:
+
+```bash
+plasmactl node:add myplatform
+plasmactl node:add myplatform --provider scaleway --domain example.com
+```
+
+Options:
+- `-p, --provider`: Infrastructure provider (default: manual)
+- `-d, --domain`: Platform domain
 
 ### node:provision
 
 Provision infrastructure for a platform:
 
 ```bash
-# Provision nodes for a platform
-plasmactl node:provision ski-dev \
+# Provision nodes
+plasmactl node:provision myplatform \
   -c foundation.cluster.control:GP1-L:3 \
   -c cognition.data:GPU-3090:2
 
 # Dry run (preview only)
-plasmactl node:provision ski-dev -c foundation.cluster.control:GP1-L:3 --dry-run
+plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3 --dry-run
+
+# Auto-approve without confirmation
+plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3 --auto-approve
 ```
 
 Options:
-- `-c, --chassis`: Chassis specification (format: `chassis:type:count`)
+- `-c, --chassis`: Chassis specification (format: `section:type:count`)
 - `--dry-run`: Preview infrastructure changes without applying
 - `--auto-approve`: Skip confirmation prompts
 
 ### node:register
 
-Manually register a node (for manual/on-premise providers):
+Manually register a node:
 
 ```bash
-plasmactl node:register ski-dev \
+plasmactl node:register myplatform \
   --hostname server1 \
   --public-ip 51.159.x.x \
   --private-ip 192.168.1.10 \
@@ -48,49 +56,65 @@ plasmactl node:register ski-dev \
 ```
 
 Options:
-- `-h, --hostname`: Node hostname (required)
-- `--public-ip`: Public IP address (required)
-- `--private-ip`: Private IP address (auto-assigned if not provided)
-- `-c, --chassis`: Chassis assignments (can be specified multiple times)
+- `--hostname`: Node hostname (required)
+- `--public-ip`: Public IP address
+- `--private-ip`: Private IP address
+- `-c, --chassis`: Chassis assignments
 
-### node:add
+### node:allocate
 
-Create a platform scaffold with nodes directory:
+Allocate a node to chassis sections using kubectl-style operations:
 
 ```bash
-plasmactl node:add ski-dev
+# Show current allocations (no operations = show mode)
+plasmactl node:allocate node001
+
+# Add chassis allocations
+plasmactl node:allocate node001 platform.foundation.cluster.control
+plasmactl node:allocate node001 platform.foundation.cluster.control platform.cognition.data
+
+# Remove allocation (trailing dash)
+plasmactl node:allocate node001 platform.cognition.data-
+
+# Replace allocation (slash separator)
+plasmactl node:allocate node001 platform.foundation.cluster.control/platform.foundation.cluster.nodes
+
+# Combined operations
+plasmactl node:allocate node001 newsection oldsection- old/new
 ```
+
+Options:
+- `-e, --env`: Environment name (looks in `inst/<env>/nodes/`)
 
 ### node:list
 
-List nodes for a platform:
+List platforms and their nodes:
 
 ```bash
-# List all platforms and their nodes
 plasmactl node:list
-
-# List nodes for a specific platform
-plasmactl node:list ski-dev
 ```
 
 ### node:show
 
-Show details of a specific node:
+Show details of a platform or node:
 
 ```bash
-plasmactl node:show ski-dev server1
+plasmactl node:show myplatform
 ```
 
 ### node:destroy
 
-Destroy a node (requires confirmation):
+Destroy infrastructure:
 
 ```bash
-plasmactl node:destroy ski-dev server1
-
-# With confirmation bypass (for automation)
-plasmactl node:destroy ski-dev server1 --yes-i-am-sure
+plasmactl node:destroy myplatform
+plasmactl node:destroy myplatform --force
+plasmactl node:destroy myplatform --keep-nodes
 ```
+
+Options:
+- `--force`: Force destruction without confirmation
+- `--keep-nodes`: Keep node files after destroying infrastructure
 
 ## Directory Structure
 
@@ -98,25 +122,26 @@ Nodes are stored in the `inst/` directory:
 
 ```
 inst/
-└── ski-dev/
+└── myplatform/
     ├── platform.yaml          # Platform configuration
     └── nodes/
-        ├── ski-dev-control-001.yaml
-        ├── ski-dev-control-002.yaml
-        └── ski-dev-cognition-001.yaml
+        ├── node001.yaml
+        ├── node002.yaml
+        └── node003.yaml
 ```
 
 ## Node File Format
 
 ```yaml
-hostname: ski-dev-control-001
+hostname: node001
 chassis:
   - platform.foundation.cluster.control
-provider_metadata:
-  server_id: "12345"
+  - platform.foundation.network.ingress
 network:
   public_ip: 51.159.x.x
   private_ip: 192.168.1.10
+labels:
+  foundation: "true"
 ```
 
 ## Chassis-Driven Provisioning
@@ -124,66 +149,36 @@ network:
 The chassis specification maps logical architecture to physical infrastructure:
 
 ```bash
-# Format: chassis:instance_type:count
-plasmactl node:provision ski-dev \
+# Format: section:instance_type:count
+plasmactl node:provision myplatform \
   -c foundation.cluster.control:GP1-L:3 \      # 3 control plane nodes
   -c cognition.data:GPU-3090:2 \               # 2 GPU nodes for AI/ML
   -c cognition.data:HIGH-MEM:3                 # 3 high-memory nodes
 ```
 
-Same chassis can have multiple hardware profiles for different workloads.
-
-## Provider Configuration
-
-Configure providers via `platform.yaml`:
-
-```yaml
-name: ski-dev
-infrastructure:
-  metal_provider: scaleway
-  api:
-    token: {{ .keyring.scaleway_api_token }}
-
-networking:
-  private_network: 192.168.0.0/16
-```
-
-### Supported Providers
-
-| Provider | Type | Status |
-|----------|------|--------|
-| Scaleway Dedibox | Dedicated servers | Supported |
-| Hetzner | Cloud/Dedicated | Planned |
-| OVH | Cloud/Dedicated | Planned |
-| AWS | Cloud | Planned |
-| GCP | Cloud | Planned |
-| Azure | Cloud | Planned |
-| Manual | On-premise | Supported |
-
 ## Workflow Example
 
 ```bash
-# 1. Create platform (handled by plasmactl-platform)
-plasmactl platform:create ski-dev \
-  --metal-provider scaleway \
-  --dns-provider ovh \
-  --domain dev.skilld.cloud
+# 1. Create platform scaffold
+plasmactl node:add myplatform --provider scaleway
 
 # 2. Provision infrastructure
-plasmactl node:provision ski-dev \
-  -c foundation.cluster.control:GP1-L:3
+plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3
 
 # 3. Verify nodes
-plasmactl node:list ski-dev
+plasmactl node:list
 
-# 4. Deploy platform
-plasmactl platform:deploy ski-dev
+# 4. Allocate additional chassis sections to nodes
+plasmactl node:allocate node001 platform.interaction.observability
+
+# 5. Deploy platform
+plasmactl platform:deploy myplatform
 ```
 
 ## Documentation
 
 - [Plasmactl](https://github.com/plasmash/plasmactl) - Main CLI tool
-- [plasmactl-platform](https://github.com/plasmash/plasmactl-platform) - Platform management
+- [plasmactl-chassis](https://github.com/plasmash/plasmactl-chassis) - Chassis management
 - [Plasma Platform](https://plasma.sh) - Platform documentation
 
 ## License

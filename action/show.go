@@ -1,42 +1,32 @@
-package plasmactlnode
+package action
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
-// showAction implements the env:show command
-type showAction struct {
-	log  *launchr.Logger
-	term *launchr.Terminal
+// Show implements the node:show command
+type Show struct {
+	action.WithLogger
+	action.WithTerm
 
-	name string
+	Name string
 }
 
-// SetLogger sets the logger for the action
-func (a *showAction) SetLogger(log *launchr.Logger) {
-	a.log = log
-}
-
-// SetTerm sets the terminal for the action
-func (a *showAction) SetTerm(term *launchr.Terminal) {
-	a.term = term
-}
-
-// Execute runs the env:show action
-func (a *showAction) Execute() error {
-	envDir := filepath.Join("inst", a.name)
+// Execute runs the node:show action
+func (s *Show) Execute() error {
+	envDir := filepath.Join("inst", s.Name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
 
 	// Check if environment exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {
-		return fmt.Errorf("environment %q not found", a.name)
+		return fmt.Errorf("environment %q not found", s.Name)
 	}
 
 	// Read platform.yaml
@@ -51,49 +41,49 @@ func (a *showAction) Execute() error {
 	}
 
 	// Print environment details
-	a.term.Info().Printfln("Environment: %s", a.name)
-	a.term.Println()
+	s.Term().Info().Printfln("Environment: %s", s.Name)
+	s.Term().Println()
 
-	a.term.Printf("  Provider:    %s\n", platform.Infrastructure.Provider)
+	s.Term().Printf("  Provider:    %s\n", platform.Infrastructure.Provider)
 	if platform.Networking.Domain != "" {
-		a.term.Printf("  Domain:      %s\n", platform.Networking.Domain)
+		s.Term().Printf("  Domain:      %s\n", platform.Networking.Domain)
 	}
 	if platform.Cluster != "" {
-		a.term.Printf("  Cluster:     %s\n", platform.Cluster)
+		s.Term().Printf("  Cluster:     %s\n", platform.Cluster)
 	}
 	if platform.Description != "" {
-		a.term.Printf("  Description: %s\n", platform.Description)
+		s.Term().Printf("  Description: %s\n", platform.Description)
 	}
 
 	// Print networking
 	if platform.Networking.PrivateNetwork != "" {
-		a.term.Println()
-		a.term.Info().Println("Networking:")
-		a.term.Printf("  Private Network: %s\n", platform.Networking.PrivateNetwork)
+		s.Term().Println()
+		s.Term().Info().Println("Networking:")
+		s.Term().Printf("  Private Network: %s\n", platform.Networking.PrivateNetwork)
 		if platform.Networking.Bus.IP != "" {
-			a.term.Printf("  Bus IP:          %s\n", platform.Networking.Bus.IP)
+			s.Term().Printf("  Bus IP:          %s\n", platform.Networking.Bus.IP)
 		}
 	}
 
 	// Print chassis configuration
 	if len(platform.Chassis) > 0 {
-		a.term.Println()
-		a.term.Info().Println("Chassis Configuration:")
+		s.Term().Println()
+		s.Term().Info().Println("Chassis Configuration:")
 		for chassis, profiles := range platform.Chassis {
 			for _, profile := range profiles {
-				a.term.Printf("  %s: %s x%d\n", chassis, profile.Type, profile.Count)
+				s.Term().Printf("  %s: %s x%d\n", chassis, profile.Type, profile.Count)
 			}
 		}
 	}
 
 	// List nodes
-	nodes, err := a.listNodes(nodesDir)
+	nodes, err := s.listNodes(nodesDir)
 	if err != nil {
-		a.log.Warn("Failed to list nodes", "error", err)
+		s.Log().Warn("Failed to list nodes", "error", err)
 	}
 
-	a.term.Println()
-	a.term.Info().Printfln("Nodes: %d", len(nodes))
+	s.Term().Println()
+	s.Term().Info().Printfln("Nodes: %d", len(nodes))
 
 	for _, node := range nodes {
 		chassis := ""
@@ -103,7 +93,7 @@ func (a *showAction) Execute() error {
 				chassis += fmt.Sprintf(" +%d more", len(node.Chassis)-1)
 			}
 		}
-		a.term.Printf("  %-30s  %-15s  %-15s  %s\n",
+		s.Term().Printf("  %-30s  %-15s  %-15s  %s\n",
 			node.Hostname,
 			node.Network.PublicIP,
 			node.Network.PrivateIP,
@@ -114,7 +104,7 @@ func (a *showAction) Execute() error {
 	return nil
 }
 
-func (a *showAction) listNodes(nodesDir string) ([]types.Node, error) {
+func (s *Show) listNodes(nodesDir string) ([]types.Node, error) {
 	var nodes []types.Node
 
 	if _, err := os.Stat(nodesDir); os.IsNotExist(err) {
