@@ -1,4 +1,6 @@
-// Package types defines YAML struct types for environment configuration
+// Package types defines YAML struct types for node configuration.
+// Node types are owned by plasmactl-node.
+// Platform types are imported from plasmactl-platform/pkg/schema.
 package types
 
 // Node represents a node configuration file in nodes/*.yaml
@@ -11,9 +13,16 @@ type Node struct {
 	Disks            []string             `yaml:"disks,omitempty"`
 	ProviderMetadata NodeProviderMetadata `yaml:"provider_metadata,omitempty"`
 
-	Resources Resources         `yaml:"resources,omitempty"`
+	Resources NodeResources     `yaml:"resources,omitempty"`
 	Labels    map[string]string `yaml:"labels,omitempty"`
 	K8sLabels map[string]string `yaml:"k8s_labels,omitempty"`
+}
+
+// NodeResources defines resource specifications for a node
+type NodeResources struct {
+	CPU    int    `yaml:"cpu,omitempty"`
+	Memory string `yaml:"memory,omitempty"`
+	GPU    string `yaml:"gpu,omitempty"`
 }
 
 // NodeNetwork defines network configuration for a node
@@ -56,4 +65,12 @@ func (n *Node) AddChassisLabels() {
 	for _, c := range n.Chassis {
 		n.K8sLabels[c] = "true"
 	}
+}
+
+// ChassisSpec represents a parsed chassis specification for provisioning.
+// Used to parse CLI input like "foundation.cluster.control:Start-1-S:3"
+type ChassisSpec struct {
+	Chassis   string
+	OfferType string
+	Count     int
 }

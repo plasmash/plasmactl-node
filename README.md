@@ -6,6 +6,14 @@ A [Launchr](https://github.com/launchrctl/launchr) plugin for [Plasmactl](https:
 
 `plasmactl-node` handles the provisioning and management of physical/virtual machines (nodes) that form the infrastructure for Plasma platforms. It integrates with cloud providers via Terraform/OpenTofu to automate infrastructure provisioning.
 
+## Features
+
+- **Infrastructure Provisioning**: Provision nodes via Terraform/OpenTofu
+- **Multi-Provider Support**: Scaleway, Hetzner, OVH, AWS, and more
+- **Chassis-Driven**: Allocate nodes to chassis sections for proper resource mapping
+- **Manual Registration**: Register existing nodes manually
+- **IP Management**: Automatic private IP allocation from configurable pools
+
 ## Commands
 
 ### node:add
@@ -26,7 +34,7 @@ Options:
 Provision infrastructure for a platform:
 
 ```bash
-# Provision nodes
+# Provision nodes with chassis specifications
 plasmactl node:provision myplatform \
   -c foundation.cluster.control:GP1-L:3 \
   -c cognition.data:GPU-3090:2
@@ -59,7 +67,7 @@ Options:
 - `--hostname`: Node hostname (required)
 - `--public-ip`: Public IP address
 - `--private-ip`: Private IP address
-- `-c, --chassis`: Chassis assignments
+- `-c, --chassis`: Chassis assignments (can be specified multiple times)
 
 ### node:allocate
 
@@ -116,6 +124,43 @@ Options:
 - `--force`: Force destruction without confirmation
 - `--keep-nodes`: Keep node files after destroying infrastructure
 
+## Project Structure
+
+```
+plasmactl-node/
+├── plugin.go                        # Plugin registration
+├── actions/
+│   ├── add/
+│   │   ├── add.yaml                 # Action definition
+│   │   └── add.go                   # Implementation
+│   ├── allocate/
+│   │   ├── allocate.yaml
+│   │   └── allocate.go
+│   ├── destroy/
+│   │   ├── destroy.yaml
+│   │   └── destroy.go
+│   ├── list/
+│   │   ├── list.yaml
+│   │   └── list.go
+│   ├── provision/
+│   │   ├── provision.yaml
+│   │   └── provision.go
+│   ├── register/
+│   │   ├── register.yaml
+│   │   └── register.go
+│   └── show/
+│       ├── show.yaml
+│       └── show.go
+└── internal/
+    ├── allocator/                   # IP allocation
+    │   └── ip_allocator.go
+    ├── terraform/                   # Terraform/OpenTofu integration
+    │   └── terraform.go
+    └── types/                       # YAML types
+        ├── node.go
+        └── platform.go
+```
+
 ## Directory Structure
 
 Nodes are stored in the `inst/` directory:
@@ -140,6 +185,8 @@ chassis:
 network:
   public_ip: 51.159.x.x
   private_ip: 192.168.1.10
+provider_metadata:
+  server_id: "12345"
 labels:
   foundation: "true"
 ```
@@ -174,6 +221,14 @@ plasmactl node:allocate node001 platform.interaction.observability
 # 5. Deploy platform
 plasmactl platform:deploy myplatform
 ```
+
+## Related Commands
+
+| Plugin | Command | Purpose |
+|--------|---------|---------|
+| plasmactl-chassis | `chassis:list` | List available chassis sections |
+| plasmactl-chassis | `chassis:show` | Show nodes allocated to a section |
+| plasmactl-platform | `platform:deploy` | Deploy to provisioned nodes |
 
 ## Documentation
 

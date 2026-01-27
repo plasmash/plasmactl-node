@@ -1,4 +1,4 @@
-package action
+package destroy
 
 import (
 	"context"
@@ -8,7 +8,8 @@ import (
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/terraform"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,13 +42,13 @@ func (d *Destroy) Execute() error {
 		return fmt.Errorf("failed to read platform.yaml: %w", err)
 	}
 
-	var platform types.Platform
+	var platform schema.Platform
 	if err := yaml.Unmarshal(platformData, &platform); err != nil {
 		return fmt.Errorf("failed to parse platform.yaml: %w", err)
 	}
 
 	// Check if provider is manual
-	if platform.Infrastructure.Provider == "manual" {
+	if platform.Infrastructure.MetalProvider == "manual" {
 		d.Term().Warning().Println("Cannot destroy infrastructure for manual provider")
 		d.Term().Info().Println("Remove node files manually if needed")
 		return nil
@@ -73,7 +74,7 @@ func (d *Destroy) Execute() error {
 	ctx := context.Background()
 
 	// Create Terraform manager
-	tfManager, err := NewTerraformManager(envDir, false, true)
+	tfManager, err := terraform.NewTerraformManager(envDir, false, true)
 	if err != nil {
 		return fmt.Errorf("failed to create terraform manager: %w", err)
 	}

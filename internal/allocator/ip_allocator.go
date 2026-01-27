@@ -1,4 +1,4 @@
-package action
+package allocator
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/types"
 	"gopkg.in/yaml.v3"
 )
 

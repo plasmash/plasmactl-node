@@ -1,4 +1,4 @@
-package action
+package allocate
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/types"
 	"gopkg.in/yaml.v3"
 )
 

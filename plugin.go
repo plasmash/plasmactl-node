@@ -9,10 +9,16 @@ import (
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 
-	naction "github.com/plasmash/plasmactl-node/action"
+	"github.com/plasmash/plasmactl-node/actions/add"
+	"github.com/plasmash/plasmactl-node/actions/allocate"
+	"github.com/plasmash/plasmactl-node/actions/destroy"
+	"github.com/plasmash/plasmactl-node/actions/list"
+	"github.com/plasmash/plasmactl-node/actions/provision"
+	"github.com/plasmash/plasmactl-node/actions/register"
+	"github.com/plasmash/plasmactl-node/actions/show"
 )
 
-//go:embed action/*.yaml
+//go:embed actions/*/*.yaml
 var actionYamlFS embed.FS
 
 func init() {
@@ -42,12 +48,12 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// node:add - Create platform scaffold with nodes directory
-	addYaml, _ := actionYamlFS.ReadFile("action/add.yaml")
+	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("node:add", addYaml)
 	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		add := &naction.Add{
+		add := &add.Add{
 			Name:     input.Arg("name").(string),
 			Provider: input.Opt("provider").(string),
 			Domain:   input.Opt("domain").(string),
@@ -58,12 +64,12 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// node:provision - Provision infrastructure
-	provisionYaml, _ := actionYamlFS.ReadFile("action/provision.yaml")
+	provisionYaml, _ := actionYamlFS.ReadFile("actions/provision/provision.yaml")
 	provisionAct := action.NewFromYAML("node:provision", provisionYaml)
 	provisionAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		provision := &naction.Provision{
+		provision := &provision.Provision{
 			Keyring:     p.k,
 			Name:        input.Arg("name").(string),
 			ChassisSpec: action.InputOptSlice[string](input, "chassis"),
@@ -76,23 +82,23 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// node:list - List platforms and their nodes
-	listYaml, _ := actionYamlFS.ReadFile("action/list.yaml")
+	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
 	listAct := action.NewFromYAML("node:list", listYaml)
 	listAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		log, term := getLogger(a)
-		list := &naction.List{}
+		list := &list.List{}
 		list.SetLogger(log)
 		list.SetTerm(term)
 		return list.Execute()
 	}))
 
 	// node:show - Show platform/node details
-	showYaml, _ := actionYamlFS.ReadFile("action/show.yaml")
+	showYaml, _ := actionYamlFS.ReadFile("actions/show/show.yaml")
 	showAct := action.NewFromYAML("node:show", showYaml)
 	showAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		show := &naction.Show{
+		show := &show.Show{
 			Name: input.Arg("name").(string),
 		}
 		show.SetLogger(log)
@@ -101,12 +107,12 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// node:destroy - Destroy infrastructure
-	destroyYaml, _ := actionYamlFS.ReadFile("action/destroy.yaml")
+	destroyYaml, _ := actionYamlFS.ReadFile("actions/destroy/destroy.yaml")
 	destroyAct := action.NewFromYAML("node:destroy", destroyYaml)
 	destroyAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		destroy := &naction.Destroy{
+		destroy := &destroy.Destroy{
 			Keyring:   p.k,
 			Name:      input.Arg("name").(string),
 			Force:     input.Opt("force").(bool),
@@ -118,12 +124,12 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// node:register - Manually register a node
-	registerYaml, _ := actionYamlFS.ReadFile("action/node.yaml")
+	registerYaml, _ := actionYamlFS.ReadFile("actions/register/register.yaml")
 	registerAct := action.NewFromYAML("node:register", registerYaml)
 	registerAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		register := &naction.Register{
+		register := &register.Register{
 			EnvName:   input.Arg("name").(string),
 			Hostname:  input.Opt("hostname").(string),
 			PublicIP:  input.Opt("public-ip").(string),
@@ -136,12 +142,12 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	// node:allocate - Allocate node to chassis sections (kubectl-style)
-	allocateYaml, _ := actionYamlFS.ReadFile("action/allocate.yaml")
+	allocateYaml, _ := actionYamlFS.ReadFile("actions/allocate/allocate.yaml")
 	allocateAct := action.NewFromYAML("node:allocate", allocateYaml)
 	allocateAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
-		allocate := &naction.Allocate{
+		allocate := &allocate.Allocate{
 			Hostname:   input.Arg("hostname").(string),
 			Operations: action.InputArgSlice[string](input, "operations"),
 			Env:        input.Opt("env").(string),

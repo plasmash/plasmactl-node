@@ -1,4 +1,4 @@
-package action
+package show
 
 import (
 	"fmt"
@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,7 +36,7 @@ func (s *Show) Execute() error {
 		return fmt.Errorf("failed to read platform.yaml: %w", err)
 	}
 
-	var platform types.Platform
+	var platform schema.Platform
 	if err := yaml.Unmarshal(data, &platform); err != nil {
 		return fmt.Errorf("failed to parse platform.yaml: %w", err)
 	}
@@ -44,9 +45,9 @@ func (s *Show) Execute() error {
 	s.Term().Info().Printfln("Environment: %s", s.Name)
 	s.Term().Println()
 
-	s.Term().Printf("  Provider:    %s\n", platform.Infrastructure.Provider)
-	if platform.Networking.Domain != "" {
-		s.Term().Printf("  Domain:      %s\n", platform.Networking.Domain)
+	s.Term().Printf("  Provider:    %s\n", platform.Infrastructure.MetalProvider)
+	if platform.DNS.Domain != "" {
+		s.Term().Printf("  Domain:      %s\n", platform.DNS.Domain)
 	}
 	if platform.Cluster != "" {
 		s.Term().Printf("  Cluster:     %s\n", platform.Cluster)

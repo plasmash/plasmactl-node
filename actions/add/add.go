@@ -1,4 +1,4 @@
-package action
+package add
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,23 +39,24 @@ func (a *Add) Execute() error {
 	}
 
 	// Create platform.yaml
-	platform := types.NewPlatform(a.Name, a.Provider, a.Domain)
+	// Use same provider for DNS if not explicitly specified
+	platform := schema.NewPlatform(a.Name, a.Provider, a.Provider, a.Domain)
 
 	// Set provider-specific defaults
 	switch a.Provider {
 	case "scaleway":
-		platform.Infrastructure.API = types.APIConfig{
+		platform.Infrastructure.API = schema.APIConfig{
 			URI:   "https://api.online.net/api/v1/",
 			Token: "{{ .keyring.scaleway_api_token }}",
 		}
 	case "hetzner":
-		platform.Infrastructure.API = types.APIConfig{
+		platform.Infrastructure.API = schema.APIConfig{
 			Token: "{{ .keyring.hetzner_api_token }}",
 		}
 	case "aws":
 		// AWS uses environment variables or ~/.aws/credentials
 	case "ovh":
-		platform.Infrastructure.API = types.APIConfig{
+		platform.Infrastructure.API = schema.APIConfig{
 			Token: "{{ .keyring.ovh_api_token }}",
 		}
 	case "manual":

@@ -1,4 +1,4 @@
-package action
+package provision
 
 import (
 	"context"
@@ -10,7 +10,10 @@ import (
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/allocator"
+	"github.com/plasmash/plasmactl-node/internal/terraform"
+	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,7 +46,7 @@ func (p *Provision) Execute() error {
 		return fmt.Errorf("failed to read platform.yaml: %w", err)
 	}
 
-	var platform types.Platform
+	var platform schema.Platform
 	if err := yaml.Unmarshal(platformData, &platform); err != nil {
 		return fmt.Errorf("failed to parse platform.yaml: %w", err)
 	}
@@ -58,10 +61,10 @@ func (p *Provision) Execute() error {
 		return fmt.Errorf("no chassis specifications provided (use -c flag or configure chassis in platform.yaml)")
 	}
 
-	p.Term().Info().Printfln("Provisioning environment %q with provider %q", p.Name, platform.Infrastructure.Provider)
+	p.Term().Info().Printfln("Provisioning environment %q with provider %q", p.Name, platform.Infrastructure.MetalProvider)
 
 	// Provider-specific provisioning
-	switch platform.Infrastructure.Provider {
+	switch platform.Infrastructure.MetalProvider {
 	case "scaleway":
 		return p.provisionScaleway(envDir, nodesDir, platform, specs)
 	case "hetzner":
@@ -73,13 +76,13 @@ func (p *Provision) Execute() error {
 	case "manual":
 		return fmt.Errorf("cannot provision with manual provider - use env:node to add nodes manually")
 	default:
-		return fmt.Errorf("unknown provider: %s", platform.Infrastructure.Provider)
+		return fmt.Errorf("unknown provider: %s", platform.Infrastructure.MetalProvider)
 	}
 }
 
 // parseChassisSpecs parses chassis specifications from CLI or platform.yaml
-func (p *Provision) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, error) {
-	var specs []ChassisSpec
+func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]types.ChassisSpec, error) {
+	var specs []types.ChassisSpec
 
 	// First, use CLI specifications if provided
 	for _, spec := range p.ChassisSpec {
@@ -93,7 +96,7 @@ func (p *Provision) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, e
 			return nil, fmt.Errorf("invalid count in chassis spec %q: %w", spec, err)
 		}
 
-		specs = append(specs, ChassisSpec{
+		specs = append(specs, types.ChassisSpec{
 			Chassis:   parts[0],
 			OfferType: parts[1],
 			Count:     count,
@@ -104,7 +107,7 @@ func (p *Provision) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, e
 	if len(specs) == 0 && platform.Chassis != nil {
 		for chassis, profiles := range platform.Chassis {
 			for _, profile := range profiles {
-				specs = append(specs, ChassisSpec{
+				specs = append(specs, types.ChassisSpec{
 					Chassis:   chassis,
 					OfferType: profile.Type,
 					Count:     profile.Count,
@@ -117,7 +120,7 @@ func (p *Provision) parseChassisSpecs(platform types.Platform) ([]ChassisSpec, e
 }
 
 // provisionScaleway provisions infrastructure using Scaleway Dedibox
-func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Platform, specs []ChassisSpec) error {
+func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.Platform, specs []types.ChassisSpec) error {
 	ctx := context.Background()
 
 	// Get API token
@@ -135,7 +138,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Pl
 	}
 
 	// Create Terraform manager
-	tfManager, err := NewTerraformManager(envDir, p.DryRun, p.AutoApprove)
+	tfManager, err := terraform.NewTerraformManager(envDir, p.DryRun, p.AutoApprove)
 	if err != nil {
 		return fmt.Errorf("failed to create terraform manager: %w", err)
 	}
@@ -193,7 +196,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Pl
 	}
 
 	// Create IP allocator for private IPs
-	allocator, err := NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
+	ipAlloc, err := allocator.NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
 	if err != nil {
 		return fmt.Errorf("failed to create IP allocator: %w", err)
 	}
@@ -206,7 +209,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Pl
 	// Generate node files
 	for _, server := range servers {
 		// Allocate private IP
-		privateIP, err := allocator.Allocate()
+		privateIP, err := ipAlloc.Allocate()
 		if err != nil {
 			return fmt.Errorf("failed to allocate private IP: %w", err)
 		}
@@ -245,9 +248,9 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform types.Pl
 
 	// Update platform.yaml with chassis configuration if it was provided via CLI
 	if len(p.ChassisSpec) > 0 {
-		platform.Chassis = make(map[string][]types.ChassisProfile)
+		platform.Chassis = make(map[string][]schema.ChassisProfile)
 		for _, spec := range specs {
-			platform.Chassis[spec.Chassis] = append(platform.Chassis[spec.Chassis], types.ChassisProfile{
+			platform.Chassis[spec.Chassis] = append(platform.Chassis[spec.Chassis], schema.ChassisProfile{
 				Type:  spec.OfferType,
 				Count: spec.Count,
 			})

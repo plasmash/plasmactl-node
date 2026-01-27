@@ -1,4 +1,4 @@
-package action
+package list
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -62,10 +62,10 @@ func (l *List) Execute() error {
 		provider := "unknown"
 		domain := ""
 		if data, err := os.ReadFile(platformFile); err == nil {
-			var platform types.Platform
+			var platform schema.Platform
 			if err := yaml.Unmarshal(data, &platform); err == nil {
-				provider = platform.Infrastructure.Provider
-				domain = platform.Networking.Domain
+				provider = platform.Infrastructure.MetalProvider
+				domain = platform.DNS.Domain
 			}
 		}
 

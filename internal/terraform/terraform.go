@@ -1,4 +1,4 @@
-package action
+package terraform
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"github.com/hashicorp/terraform-exec/tfexec"
+	"github.com/plasmash/plasmactl-node/internal/types"
 )
 
 // TerraformManager handles Terraform/OpenTofu operations
@@ -19,13 +20,6 @@ type TerraformManager struct {
 	tf          *tfexec.Terraform
 	dryRun      bool
 	autoApprove bool
-}
-
-// ChassisSpec represents a parsed chassis specification
-type ChassisSpec struct {
-	Chassis   string
-	OfferType string
-	Count     int
 }
 
 // ServerOutput represents a provisioned server from Terraform
@@ -80,13 +74,13 @@ func findTerraformBinary() (string, error) {
 }
 
 // GenerateHCL generates Terraform HCL for Scaleway Dedibox
-func (m *TerraformManager) GenerateHCL(envName string, specs []ChassisSpec, apiToken string) error {
+func (m *TerraformManager) GenerateHCL(envName string, specs []types.ChassisSpec, apiToken string) error {
 	mainFile := filepath.Join(m.workDir, "main.tf")
 
 	data := struct {
 		EnvName  string
 		APIToken string
-		Specs    []ChassisSpec
+		Specs    []types.ChassisSpec
 	}{
 		EnvName:  envName,
 		APIToken: apiToken,

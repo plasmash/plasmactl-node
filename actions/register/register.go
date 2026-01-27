@@ -1,4 +1,4 @@
-package action
+package register
 
 import (
 	"fmt"
@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/pkg/types"
+	"github.com/plasmash/plasmactl-node/internal/allocator"
+	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,7 +41,7 @@ func (r *Register) Execute() error {
 		return fmt.Errorf("failed to read platform.yaml: %w", err)
 	}
 
-	var platform types.Platform
+	var platform schema.Platform
 	if err := yaml.Unmarshal(platformData, &platform); err != nil {
 		return fmt.Errorf("failed to parse platform.yaml: %w", err)
 	}
@@ -47,12 +49,12 @@ func (r *Register) Execute() error {
 	// Allocate private IP if not provided
 	privateIP := r.PrivateIP
 	if privateIP == "" {
-		allocator, err := NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
+		ipAlloc, err := allocator.NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
 		if err != nil {
 			return fmt.Errorf("failed to create IP allocator: %w", err)
 		}
 
-		privateIP, err = allocator.Allocate()
+		privateIP, err = ipAlloc.Allocate()
 		if err != nil {
 			return fmt.Errorf("failed to allocate private IP: %w", err)
 		}
