@@ -1,21 +1,7 @@
 runtime: plugin
 action:
   title: Allocate
-  description: |
-    Allocate a node to chassis sections.
-
-    Usage patterns:
-      node:allocate HOSTNAME                    # Show current allocations
-      node:allocate HOSTNAME CHASSIS...         # Add allocations
-      node:allocate HOSTNAME CHASSIS-           # Remove allocation (trailing dash)
-      node:allocate HOSTNAME OLD/NEW            # Replace allocation
-
-    Examples:
-      node:allocate node001
-      node:allocate node001 platform.foundation.cluster.control
-      node:allocate node001 platform.foundation.cluster.control platform.cognition.data
-      node:allocate node001 platform.cognition.data-
-      node:allocate node001 platform.foundation.cluster.control/platform.foundation.cluster.nodes
+  description: Allocate a node to chassis sections
   arguments:
     - name: hostname
       title: Hostname
