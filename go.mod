@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/terraform-exec v0.21.0
 	github.com/launchrctl/keyring v0.9.0
 	github.com/launchrctl/launchr v0.22.0
-	github.com/plasmash/plasmactl-platform v0.0.0
+	github.com/plasmash/plasmactl-platform v1.5.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -123,6 +123,3 @@ require (
 
 // Resolve ambiguous import for genproto split modules
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241007155032-5fefd90f89a9
-
-// Use local version of plasmactl-platform
-replace github.com/plasmash/plasmactl-platform => ../plasmactl-platform
