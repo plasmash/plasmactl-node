@@ -12,7 +12,7 @@ action:
       shorthand: c
       title: Chassis
       description: "Chassis specification in format: chassis.path:offer_type:count (can be specified multiple times)"
-      type: stringArray
+      type: array
       default: []
     - name: dry-run
       title: Dry Run

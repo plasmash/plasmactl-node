@@ -28,5 +28,5 @@ action:
       shorthand: c
       title: Chassis
       description: "Chassis assignments for the node (can be specified multiple times)"
-      type: stringArray
+      type: array
       default: []

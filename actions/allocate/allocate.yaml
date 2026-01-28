@@ -24,7 +24,7 @@ action:
     - name: operations
       title: Operations
       description: "Chassis operations: CHASSIS (add), CHASSIS- (remove), OLD/NEW (replace)"
-      type: "[]string"
+      type: array
       required: false
   options:
     - name: env
