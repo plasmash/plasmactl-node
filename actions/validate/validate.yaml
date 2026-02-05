@@ -1,0 +1,21 @@
+runtime: plugin
+action:
+  title: Validate Node
+  description: "Validate node configuration and check for issues"
+  arguments:
+    - name: identifier
+      title: Identifier
+      description: Node hostname or platform name (validates all nodes in platform)
+      required: false
+  options:
+    - name: env
+      shorthand: e
+      title: Environment
+      description: Environment name (looks in inst/<env>/nodes/)
+      type: string
+      default: ""
+    - name: check-chassis
+      title: Check Chassis
+      description: Validate chassis paths against chassis tree
+      type: boolean
+      default: false

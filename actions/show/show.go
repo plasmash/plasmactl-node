@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,7 +85,7 @@ func (s *Show) Execute() error {
 }
 
 // showNode displays details for a single node
-func (s *Show) showNode(platform string, node types.Node) error {
+func (s *Show) showNode(platform string, node node.Node) error {
 	// Build result
 	s.result = &ShowResult{
 		Node: &NodeInfo{
@@ -139,8 +139,8 @@ func (s *Show) showNode(platform string, node types.Node) error {
 	return nil
 }
 
-func (s *Show) listNodes(nodesDir string) ([]types.Node, error) {
-	var nodes []types.Node
+func (s *Show) listNodes(nodesDir string) ([]node.Node, error) {
+	var nodes []node.Node
 
 	if _, err := os.Stat(nodesDir); os.IsNotExist(err) {
 		return nodes, nil
@@ -164,7 +164,7 @@ func (s *Show) listNodes(nodesDir string) ([]types.Node, error) {
 			continue
 		}
 
-		var node types.Node
+		var node node.Node
 		if err := yaml.Unmarshal(data, &node); err != nil {
 			continue
 		}

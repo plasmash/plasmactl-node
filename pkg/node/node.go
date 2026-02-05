@@ -62,6 +62,38 @@ type ProviderMetadata struct {
 	OfferName  string `yaml:"offer_name,omitempty"`
 }
 
+// ChassisSpec represents a parsed chassis specification for provisioning.
+// Used to parse CLI input like "foundation.cluster.control:Start-1-S:3"
+type ChassisSpec struct {
+	Chassis   string
+	OfferType string
+	Count     int
+}
+
+// NewNode creates a new Node with the given configuration
+func NewNode(hostname string, chassis []string, publicIP, privateIP string) *Node {
+	return &Node{
+		Hostname: hostname,
+		Chassis:  chassis,
+		Network: Network{
+			PublicIP:  publicIP,
+			PrivateIP: privateIP,
+		},
+		Labels:    make(map[string]string),
+		K8sLabels: make(map[string]string),
+	}
+}
+
+// AddChassisLabels generates Kubernetes labels from chassis assignments
+func (n *Node) AddChassisLabels() {
+	if n.K8sLabels == nil {
+		n.K8sLabels = make(map[string]string)
+	}
+	for _, c := range n.Chassis {
+		n.K8sLabels[c] = "true"
+	}
+}
+
 // Load loads a single node from a YAML file.
 func Load(path string) (*Node, error) {
 	data, err := os.ReadFile(path)

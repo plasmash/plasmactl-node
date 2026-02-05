@@ -7,7 +7,7 @@ import (
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/internal/allocator"
-	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -90,10 +90,10 @@ func (r *Register) Execute() error {
 	}
 
 	// Create node configuration
-	node := types.NewNode(r.Hostname, r.Chassis, r.PublicIP, privateIP)
-	node.AddChassisLabels()
+	n := node.NewNode(r.Hostname, r.Chassis, r.PublicIP, privateIP)
+	n.AddChassisLabels()
 
-	data, err := yaml.Marshal(node)
+	data, err := yaml.Marshal(n)
 	if err != nil {
 		return fmt.Errorf("failed to marshal node: %w", err)
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/internal/allocator"
 	"github.com/plasmash/plasmactl-node/internal/terraform"
-	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -111,8 +111,8 @@ func (p *Provision) Execute() error {
 }
 
 // parseChassisSpecs parses chassis specifications from CLI or platform.yaml
-func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]types.ChassisSpec, error) {
-	var specs []types.ChassisSpec
+func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]node.ChassisSpec, error) {
+	var specs []node.ChassisSpec
 
 	// First, use CLI specifications if provided
 	for _, spec := range p.ChassisSpec {
@@ -126,7 +126,7 @@ func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]types.Chassis
 			return nil, fmt.Errorf("invalid count in chassis spec %q: %w", spec, err)
 		}
 
-		specs = append(specs, types.ChassisSpec{
+		specs = append(specs, node.ChassisSpec{
 			Chassis:   parts[0],
 			OfferType: parts[1],
 			Count:     count,
@@ -137,7 +137,7 @@ func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]types.Chassis
 	if len(specs) == 0 && platform.Chassis != nil {
 		for chassis, profiles := range platform.Chassis {
 			for _, profile := range profiles {
-				specs = append(specs, types.ChassisSpec{
+				specs = append(specs, node.ChassisSpec{
 					Chassis:   chassis,
 					OfferType: profile.Type,
 					Count:     profile.Count,
@@ -150,7 +150,7 @@ func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]types.Chassis
 }
 
 // provisionScaleway provisions infrastructure using Scaleway Dedibox
-func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.Platform, specs []types.ChassisSpec) error {
+func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.Platform, specs []node.ChassisSpec) error {
 	ctx := context.Background()
 
 	// Get API token
@@ -244,25 +244,25 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 			return fmt.Errorf("failed to allocate private IP: %w", err)
 		}
 
-		node := &types.Node{
+		n := &node.Node{
 			Hostname: server.Hostname,
 			Chassis:  []string{server.Chassis},
 			Profile:  server.OfferName,
-			Network: types.NodeNetwork{
+			Network: node.Network{
 				PublicIP:   server.PublicIP,
 				PrivateIP:  privateIP,
 				PrivateMAC: server.PrivateMAC,
 			},
-			ProviderMetadata: types.NodeProviderMetadata{
+			ProviderMetadata: node.ProviderMetadata{
 				ServerID:  server.ServerID,
 				Zone:      server.Zone,
 				OfferName: server.OfferName,
 			},
 		}
-		node.AddChassisLabels()
+		n.AddChassisLabels()
 
 		nodeFile := filepath.Join(nodesDir, server.Hostname+".yaml")
-		data, err := yaml.Marshal(node)
+		data, err := yaml.Marshal(n)
 		if err != nil {
 			return fmt.Errorf("failed to marshal node %s: %w", server.Hostname, err)
 		}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 	"gopkg.in/yaml.v3"
 )
 
@@ -60,13 +60,13 @@ func (a *IPAllocator) loadExisting() error {
 			continue
 		}
 
-		var node types.Node
-		if err := yaml.Unmarshal(data, &node); err != nil {
+		var n node.Node
+		if err := yaml.Unmarshal(data, &n); err != nil {
 			continue
 		}
 
-		if node.Network.PrivateIP != "" {
-			a.allocated[node.Network.PrivateIP] = true
+		if n.Network.PrivateIP != "" {
+			a.allocated[n.Network.PrivateIP] = true
 		}
 	}
 

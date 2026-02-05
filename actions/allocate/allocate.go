@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/internal/types"
+	"github.com/plasmash/plasmactl-node/pkg/node"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,7 +57,7 @@ func (a *Allocate) Execute() error {
 		return fmt.Errorf("failed to read node file: %w", err)
 	}
 
-	var node types.Node
+	var node node.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return fmt.Errorf("failed to parse node file: %w", err)
 	}
@@ -133,7 +133,7 @@ func (a *Allocate) Execute() error {
 }
 
 // showAllocations displays current chassis allocations
-func (a *Allocate) showAllocations(node *types.Node) error {
+func (a *Allocate) showAllocations(node *node.Node) error {
 	a.Term().Info().Printfln("Node: %s", node.Hostname)
 	a.Term().Println()
 
@@ -188,7 +188,7 @@ func (a *Allocate) parseOperations() []ChassisOp {
 }
 
 // addChassis adds a chassis to the node, returns true if added
-func (a *Allocate) addChassis(node *types.Node, chassis string) bool {
+func (a *Allocate) addChassis(node *node.Node, chassis string) bool {
 	// Check if already exists
 	for _, c := range node.Chassis {
 		if c == chassis {
@@ -202,7 +202,7 @@ func (a *Allocate) addChassis(node *types.Node, chassis string) bool {
 }
 
 // removeChassis removes a chassis from the node, returns true if removed
-func (a *Allocate) removeChassis(node *types.Node, chassis string) bool {
+func (a *Allocate) removeChassis(node *node.Node, chassis string) bool {
 	for i, c := range node.Chassis {
 		if c == chassis {
 			node.Chassis = append(node.Chassis[:i], node.Chassis[i+1:]...)

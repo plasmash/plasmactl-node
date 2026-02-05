@@ -17,6 +17,7 @@ import (
 	"github.com/plasmash/plasmactl-node/actions/query"
 	"github.com/plasmash/plasmactl-node/actions/register"
 	"github.com/plasmash/plasmactl-node/actions/show"
+	"github.com/plasmash/plasmactl-node/actions/validate"
 )
 
 //go:embed actions/*/*.yaml
@@ -180,6 +181,23 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return q.Result(), err
 	}))
 
+	// node:validate - Validate node configuration
+	validateYaml, _ := actionYamlFS.ReadFile("actions/validate/validate.yaml")
+	validateAct := action.NewFromYAML("node:validate", validateYaml)
+	validateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
+		input := a.Input()
+		log, term := getLogger(a)
+		v := &validate.Validate{
+			Identifier:   input.Arg("identifier").(string),
+			Env:          input.Opt("env").(string),
+			CheckChassis: input.Opt("check-chassis").(bool),
+		}
+		v.SetLogger(log)
+		v.SetTerm(term)
+		err := v.Execute()
+		return v.Result(), err
+	}))
+
 	return []*action.Action{
 		addAct,
 		provisionAct,
@@ -189,6 +207,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		registerAct,
 		allocateAct,
 		queryAct,
+		validateAct,
 	}, nil
 }
 
