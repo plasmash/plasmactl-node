@@ -12,8 +12,9 @@ import (
 
 // NetworkInfo represents node network configuration
 type NetworkInfo struct {
-	PublicIP  string `json:"public_ip,omitempty"`
-	PrivateIP string `json:"private_ip,omitempty"`
+	PublicIP   string `json:"public_ip,omitempty"`
+	PrivateIP  string `json:"private_ip,omitempty"`
+	FailoverIP string `json:"failover_ip,omitempty"`
 }
 
 // ProviderInfo represents provider metadata
@@ -93,8 +94,9 @@ func (s *Show) showNode(platform string, node node.Node) error {
 			Platform: platform,
 			Chassis:  node.Chassis,
 			Network: NetworkInfo{
-				PublicIP:  node.Network.PublicIP,
-				PrivateIP: node.Network.PrivateIP,
+				PublicIP:   node.Network.PublicIP,
+				PrivateIP:  node.Network.PrivateIP,
+				FailoverIP: node.Network.FailoverIP,
 			},
 			Provider: ProviderInfo{
 				ServerID: node.ProviderMetadata.ServerID,
@@ -123,6 +125,9 @@ func (s *Show) showNode(platform string, node node.Node) error {
 	}
 	if n.Network.PrivateIP != "" {
 		fmt.Printf("private_ip\t%s\n", n.Network.PrivateIP)
+	}
+	if n.Network.FailoverIP != "" {
+		fmt.Printf("failover_ip\t%s\n", n.Network.FailoverIP)
 	}
 
 	if n.Provider.ServerID != "" || n.Provider.Zone != "" {

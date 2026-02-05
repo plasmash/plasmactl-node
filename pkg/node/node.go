@@ -43,6 +43,7 @@ type Resources struct {
 type Network struct {
 	PublicIP   string `yaml:"public_ip"`
 	PrivateIP  string `yaml:"private_ip"`
+	FailoverIP string `yaml:"failover_ip,omitempty"`
 	PublicMAC  string `yaml:"public_mac,omitempty"`
 	PrivateMAC string `yaml:"private_mac,omitempty"`
 }
