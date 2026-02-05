@@ -12,6 +12,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// AllocateResult is the structured output for node:allocate
+type AllocateResult struct {
+	Hostname string   `json:"hostname"`
+	Chassis  []string `json:"chassis"`
+	Modified bool     `json:"modified"`
+}
+
 // Allocate implements the node:allocate command
 type Allocate struct {
 	action.WithLogger
@@ -20,6 +27,13 @@ type Allocate struct {
 	Hostname   string
 	Operations []string
 	Env        string
+
+	result *AllocateResult
+}
+
+// Result returns the structured result for JSON output
+func (a *Allocate) Result() any {
+	return a.result
 }
 
 // ChassisOp represents a parsed chassis operation
@@ -50,6 +64,12 @@ func (a *Allocate) Execute() error {
 
 	// No operations = show current allocations
 	if len(a.Operations) == 0 {
+		// Build result for show mode
+		a.result = &AllocateResult{
+			Hostname: node.Hostname,
+			Chassis:  node.Chassis,
+			Modified: false,
+		}
 		return a.showAllocations(&node)
 	}
 
@@ -100,6 +120,13 @@ func (a *Allocate) Execute() error {
 
 	if err := os.WriteFile(nodeFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write node file: %w", err)
+	}
+
+	// Build result
+	a.result = &AllocateResult{
+		Hostname: node.Hostname,
+		Chassis:  node.Chassis,
+		Modified: modified,
 	}
 
 	return nil

@@ -1,4 +1,26 @@
 runtime: plugin
 action:
   title: List Nodes
-  description: "List all platforms and their nodes in the inst/ directory"
+  description: "List all nodes across platforms"
+  options:
+    - name: tree
+      shorthand: t
+      title: Tree
+      description: Show as tree with chassis paths and components
+      type: boolean
+      default: false
+  result:
+    type: object
+    properties:
+      nodes:
+        type: array
+        description: List of nodes
+        items:
+          type: object
+          properties:
+            hostname:
+              type: string
+              description: Node hostname
+            platform:
+              type: string
+              description: Platform instance

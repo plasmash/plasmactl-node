@@ -1,9 +1,41 @@
 runtime: plugin
 action:
-  title: Show Node Platform
-  description: "Show details of a specific platform and its nodes"
+  title: Show Node
+  description: "Show details of a specific node"
   arguments:
     - name: name
-      title: Name
-      description: The name of the platform to show
+      title: Hostname
+      description: The hostname of the node to show
       required: true
+  result:
+    type: object
+    properties:
+      node:
+        type: object
+        description: Node details
+        properties:
+          hostname:
+            type: string
+            description: Node hostname
+          platform:
+            type: string
+            description: Platform instance
+          chassis:
+            type: array
+            description: Chassis sections allocated to this node
+            items:
+              type: string
+          network:
+            type: object
+            properties:
+              public_ip:
+                type: string
+              private_ip:
+                type: string
+          provider:
+            type: object
+            properties:
+              server_id:
+                type: string
+              zone:
+                type: string

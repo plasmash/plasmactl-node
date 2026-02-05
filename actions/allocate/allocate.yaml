@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Allocate
-  description: Allocate a node to chassis sections
+  description: Allocate a node to chassis paths
   arguments:
     - name: hostname
       title: Hostname

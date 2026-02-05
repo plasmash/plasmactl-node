@@ -17,6 +17,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ProvisionedNode represents a provisioned node in the result
+type ProvisionedNode struct {
+	Hostname  string `json:"hostname"`
+	PublicIP  string `json:"public_ip"`
+	PrivateIP string `json:"private_ip"`
+	Chassis   string `json:"chassis"`
+}
+
+// ProvisionResult is the structured output for node:provision
+type ProvisionResult struct {
+	Name     string            `json:"name"`
+	Provider string            `json:"provider"`
+	Nodes    []ProvisionedNode `json:"nodes"`
+	DryRun   bool              `json:"dry_run"`
+}
+
 // Provision implements the node:provision command
 type Provision struct {
 	action.WithLogger
@@ -27,6 +43,13 @@ type Provision struct {
 	ChassisSpec []string
 	DryRun      bool
 	AutoApprove bool
+
+	result *ProvisionResult
+}
+
+// Result returns the structured result for JSON output
+func (p *Provision) Result() any {
+	return p.result
 }
 
 // Execute runs the node:provision action
@@ -59,6 +82,13 @@ func (p *Provision) Execute() error {
 
 	if len(specs) == 0 {
 		return fmt.Errorf("no chassis specifications provided (use -c flag or configure chassis in platform.yaml)")
+	}
+
+	// Initialize result
+	p.result = &ProvisionResult{
+		Name:     p.Name,
+		Provider: platform.Infrastructure.MetalProvider,
+		DryRun:   p.DryRun,
 	}
 
 	p.Term().Info().Printfln("Provisioning environment %q with provider %q", p.Name, platform.Infrastructure.MetalProvider)
@@ -240,6 +270,14 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 		if err := os.WriteFile(nodeFile, data, 0644); err != nil {
 			return fmt.Errorf("failed to write node file %s: %w", nodeFile, err)
 		}
+
+		// Add to result
+		p.result.Nodes = append(p.result.Nodes, ProvisionedNode{
+			Hostname:  server.Hostname,
+			PublicIP:  server.PublicIP,
+			PrivateIP: privateIP,
+			Chassis:   server.Chassis,
+		})
 
 		p.Term().Success().Printfln("Created node: %s (%s)", server.Hostname, server.PublicIP)
 	}

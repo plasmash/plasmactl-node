@@ -1,22 +1,32 @@
 runtime: plugin
 action:
-  title: Add Node Platform
-  description: "Create a new platform scaffold with nodes/ directory for node provisioning"
+  title: Add Node
+  description: "Add a node to a platform (manual registration)"
   arguments:
-    - name: name
-      title: Name
-      description: The name of the platform to create
+    - name: platform
+      title: Platform
+      description: The platform to add the node to
       required: true
   options:
-    - name: provider
-      shorthand: p
-      title: Provider
-      description: Infrastructure provider (scaleway, hetzner, aws, ovh, manual)
+    - name: hostname
+      shorthand: n
+      title: Hostname
+      description: The hostname for the node
       type: string
-      default: "manual"
-    - name: domain
-      shorthand: d
-      title: Domain
-      description: Base domain for the platform
+      required: true
+    - name: public-ip
+      title: Public IP
+      description: The public IP address of the node
+      type: string
+      required: true
+    - name: private-ip
+      title: Private IP
+      description: The private IP address (auto-assigned if not provided)
       type: string
       default: ""
+    - name: chassis
+      shorthand: c
+      title: Chassis
+      description: "Chassis paths to allocate (can be specified multiple times)"
+      type: array
+      default: []

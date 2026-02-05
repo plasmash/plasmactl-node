@@ -14,6 +14,7 @@ import (
 	"github.com/plasmash/plasmactl-node/actions/destroy"
 	"github.com/plasmash/plasmactl-node/actions/list"
 	"github.com/plasmash/plasmactl-node/actions/provision"
+	"github.com/plasmash/plasmactl-node/actions/query"
 	"github.com/plasmash/plasmactl-node/actions/register"
 	"github.com/plasmash/plasmactl-node/actions/show"
 )
@@ -47,16 +48,18 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
-	// node:add - Create platform scaffold with nodes directory
+	// node:add - Add a node to a platform (manual registration)
 	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("node:add", addYaml)
 	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
 		input := a.Input()
 		log, term := getLogger(a)
 		add := &add.Add{
-			Name:     input.Arg("name").(string),
-			Provider: input.Opt("provider").(string),
-			Domain:   input.Opt("domain").(string),
+			Platform:  input.Arg("platform").(string),
+			Hostname:  input.Opt("hostname").(string),
+			PublicIP:  input.Opt("public-ip").(string),
+			PrivateIP: input.Opt("private-ip").(string),
+			Chassis:   action.InputOptSlice[string](input, "chassis"),
 		}
 		add.SetLogger(log)
 		add.SetTerm(term)
@@ -85,8 +88,11 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
 	listAct := action.NewFromYAML("node:list", listYaml)
 	listAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
 		log, term := getLogger(a)
-		list := &list.List{}
+		list := &list.List{
+			Tree: input.Opt("tree").(bool),
+		}
 		list.SetLogger(log)
 		list.SetTerm(term)
 		return list.Execute()
@@ -141,7 +147,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return register.Execute()
 	}))
 
-	// node:allocate - Allocate node to chassis sections (kubectl-style)
+	// node:allocate - Allocate node to chassis paths (kubectl-style)
 	allocateYaml, _ := actionYamlFS.ReadFile("actions/allocate/allocate.yaml")
 	allocateAct := action.NewFromYAML("node:allocate", allocateYaml)
 	allocateAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
@@ -157,6 +163,23 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return allocate.Execute()
 	}))
 
+	// node:query - Query nodes by chassis path, component, or package
+	queryYaml, _ := actionYamlFS.ReadFile("actions/query/query.yaml")
+	queryAct := action.NewFromYAML("node:query", queryYaml)
+	queryAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
+		input := a.Input()
+		log, term := getLogger(a)
+		q := &query.Query{
+			Identifier: input.Arg("identifier").(string),
+			Env:        input.Opt("env").(string),
+			Kind:       input.Opt("kind").(string),
+		}
+		q.SetLogger(log)
+		q.SetTerm(term)
+		err := q.Execute()
+		return q.Result(), err
+	}))
+
 	return []*action.Action{
 		addAct,
 		provisionAct,
@@ -165,6 +188,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		destroyAct,
 		registerAct,
 		allocateAct,
+		queryAct,
 	}, nil
 }
 

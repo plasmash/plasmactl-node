@@ -7,9 +7,34 @@ import (
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/internal/types"
-	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
+
+// NetworkInfo represents node network configuration
+type NetworkInfo struct {
+	PublicIP  string `json:"public_ip,omitempty"`
+	PrivateIP string `json:"private_ip,omitempty"`
+}
+
+// ProviderInfo represents provider metadata
+type ProviderInfo struct {
+	ServerID string `json:"server_id,omitempty"`
+	Zone     string `json:"zone,omitempty"`
+}
+
+// NodeInfo represents detailed node information
+type NodeInfo struct {
+	Node     string       `json:"node"`
+	Platform string       `json:"platform"`
+	Chassis  []string     `json:"chassis,omitempty"`
+	Network  NetworkInfo  `json:"network"`
+	Provider ProviderInfo `json:"provider,omitempty"`
+}
+
+// ShowResult is the structured output for node:show
+type ShowResult struct {
+	Node *NodeInfo `json:"node"`
+}
 
 // Show implements the node:show command
 type Show struct {
@@ -17,89 +42,98 @@ type Show struct {
 	action.WithTerm
 
 	Name string
+
+	result *ShowResult
+}
+
+// Result returns the structured result for JSON output
+func (s *Show) Result() any {
+	return s.result
 }
 
 // Execute runs the node:show action
 func (s *Show) Execute() error {
-	envDir := filepath.Join("inst", s.Name)
-	platformFile := filepath.Join(envDir, "platform.yaml")
-	nodesDir := filepath.Join(envDir, "nodes")
-
-	// Check if environment exists
-	if _, err := os.Stat(envDir); os.IsNotExist(err) {
-		return fmt.Errorf("environment %q not found", s.Name)
-	}
-
-	// Read platform.yaml
-	data, err := os.ReadFile(platformFile)
+	// Find node by hostname across all platforms
+	instDir := "inst"
+	entries, err := os.ReadDir(instDir)
 	if err != nil {
-		return fmt.Errorf("failed to read platform.yaml: %w", err)
+		return fmt.Errorf("failed to read inst directory: %w", err)
 	}
 
-	var platform schema.Platform
-	if err := yaml.Unmarshal(data, &platform); err != nil {
-		return fmt.Errorf("failed to parse platform.yaml: %w", err)
-	}
-
-	// Print environment details
-	s.Term().Info().Printfln("Environment: %s", s.Name)
-	s.Term().Println()
-
-	s.Term().Printf("  Provider:    %s\n", platform.Infrastructure.MetalProvider)
-	if platform.DNS.Domain != "" {
-		s.Term().Printf("  Domain:      %s\n", platform.DNS.Domain)
-	}
-	if platform.Cluster != "" {
-		s.Term().Printf("  Cluster:     %s\n", platform.Cluster)
-	}
-	if platform.Description != "" {
-		s.Term().Printf("  Description: %s\n", platform.Description)
-	}
-
-	// Print networking
-	if platform.Networking.PrivateNetwork != "" {
-		s.Term().Println()
-		s.Term().Info().Println("Networking:")
-		s.Term().Printf("  Private Network: %s\n", platform.Networking.PrivateNetwork)
-		if platform.Networking.Bus.IP != "" {
-			s.Term().Printf("  Bus IP:          %s\n", platform.Networking.Bus.IP)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
 		}
-	}
 
-	// Print chassis configuration
-	if len(platform.Chassis) > 0 {
-		s.Term().Println()
-		s.Term().Info().Println("Chassis Configuration:")
-		for chassis, profiles := range platform.Chassis {
-			for _, profile := range profiles {
-				s.Term().Printf("  %s: %s x%d\n", chassis, profile.Type, profile.Count)
+		platform := entry.Name()
+		nodesDir := filepath.Join(instDir, platform, "nodes")
+
+		nodes, err := s.listNodes(nodesDir)
+		if err != nil {
+			continue
+		}
+
+		for _, node := range nodes {
+			if node.Hostname == s.Name {
+				return s.showNode(platform, node)
 			}
 		}
 	}
 
-	// List nodes
-	nodes, err := s.listNodes(nodesDir)
-	if err != nil {
-		s.Log().Warn("Failed to list nodes", "error", err)
+	s.Term().Error().Printfln("Node %q not found in any platform", s.Name)
+	return nil
+}
+
+// showNode displays details for a single node
+func (s *Show) showNode(platform string, node types.Node) error {
+	// Build result
+	s.result = &ShowResult{
+		Node: &NodeInfo{
+			Node:     node.Hostname,
+			Platform: platform,
+			Chassis:  node.Chassis,
+			Network: NetworkInfo{
+				PublicIP:  node.Network.PublicIP,
+				PrivateIP: node.Network.PrivateIP,
+			},
+			Provider: ProviderInfo{
+				ServerID: node.ProviderMetadata.ServerID,
+				Zone:     node.ProviderMetadata.Zone,
+			},
+		},
 	}
 
-	s.Term().Println()
-	s.Term().Info().Printfln("Nodes: %d", len(nodes))
+	// Print human-readable output
+	n := s.result.Node
+	fmt.Printf("node\t%s\n", n.Node)
+	fmt.Printf("platform\t%s\n", n.Platform)
 
-	for _, node := range nodes {
-		chassis := ""
-		if len(node.Chassis) > 0 {
-			chassis = node.Chassis[0]
-			if len(node.Chassis) > 1 {
-				chassis += fmt.Sprintf(" +%d more", len(node.Chassis)-1)
-			}
+	if len(n.Chassis) > 0 {
+		fmt.Println()
+		s.Term().Info().Printfln("Chassis (%d)", len(n.Chassis))
+		for _, ch := range n.Chassis {
+			fmt.Println(ch)
 		}
-		s.Term().Printf("  %-30s  %-15s  %-15s  %s\n",
-			node.Hostname,
-			node.Network.PublicIP,
-			node.Network.PrivateIP,
-			chassis,
-		)
+	}
+
+	fmt.Println()
+	s.Term().Info().Println("Network")
+	if n.Network.PublicIP != "" {
+		fmt.Printf("public_ip\t%s\n", n.Network.PublicIP)
+	}
+	if n.Network.PrivateIP != "" {
+		fmt.Printf("private_ip\t%s\n", n.Network.PrivateIP)
+	}
+
+	if n.Provider.ServerID != "" || n.Provider.Zone != "" {
+		fmt.Println()
+		s.Term().Info().Println("Provider")
+		if n.Provider.ServerID != "" {
+			fmt.Printf("server_id\t%s\n", n.Provider.ServerID)
+		}
+		if n.Provider.Zone != "" {
+			fmt.Printf("zone\t%s\n", n.Provider.Zone)
+		}
 	}
 
 	return nil

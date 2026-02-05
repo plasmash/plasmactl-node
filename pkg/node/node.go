@@ -1,5 +1,5 @@
 // Package node provides types and operations for managing platform nodes.
-// Nodes are physical or virtual machines that get allocated to chassis sections.
+// Nodes are physical or virtual machines that get allocated to chassis paths.
 package node
 
 import (
@@ -14,6 +14,7 @@ import (
 // Node represents a node configuration from inst/<platform>/nodes/<hostname>.yaml
 type Node struct {
 	Hostname string   `yaml:"hostname"`
+	Platform string   `yaml:"-"` // Platform name (derived from directory structure)
 	Chassis  []string `yaml:"chassis"` // Direct chassis allocations
 	Profile  string   `yaml:"profile,omitempty"`
 
@@ -24,6 +25,11 @@ type Node struct {
 	Resources Resources         `yaml:"resources,omitempty"`
 	Labels    map[string]string `yaml:"labels,omitempty"`
 	K8sLabels map[string]string `yaml:"k8s_labels,omitempty"`
+}
+
+// DisplayName returns the node formatted as "hostname@platform".
+func (n Node) DisplayName() string {
+	return n.Hostname + "@" + n.Platform
 }
 
 // Resources defines resource specifications for a node
@@ -39,6 +45,11 @@ type Network struct {
 	PrivateIP  string `yaml:"private_ip"`
 	PublicMAC  string `yaml:"public_mac,omitempty"`
 	PrivateMAC string `yaml:"private_mac,omitempty"`
+}
+
+// FormatDisplayName formats a node display name as "hostname@platform".
+func FormatDisplayName(hostname, platform string) string {
+	return hostname + "@" + platform
 }
 
 // ProviderMetadata stores provider-specific metadata
@@ -154,6 +165,7 @@ func loadNodesFromPlatform(instDir, platform string) (Nodes, error) {
 		if err != nil {
 			continue
 		}
+		node.Platform = platform
 		nodes = append(nodes, *node)
 	}
 

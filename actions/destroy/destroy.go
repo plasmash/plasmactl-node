@@ -13,6 +13,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// DestroyResult is the structured output for node:destroy
+type DestroyResult struct {
+	Name         string   `json:"name"`
+	NodesRemoved []string `json:"nodes_removed,omitempty"`
+	Success      bool     `json:"success"`
+}
+
 // Destroy implements the node:destroy command
 type Destroy struct {
 	action.WithLogger
@@ -22,6 +29,13 @@ type Destroy struct {
 	Name      string
 	Force     bool
 	KeepNodes bool
+
+	result *DestroyResult
+}
+
+// Result returns the structured result for JSON output
+func (d *Destroy) Result() any {
+	return d.result
 }
 
 // Execute runs the node:destroy action
@@ -93,6 +107,12 @@ func (d *Destroy) Execute() error {
 
 	d.Term().Success().Println("Infrastructure destroyed")
 
+	// Initialize result
+	d.result = &DestroyResult{
+		Name:    d.Name,
+		Success: true,
+	}
+
 	// Remove node files unless --keep-nodes
 	if !d.KeepNodes {
 		entries, err := os.ReadDir(nodesDir)
@@ -105,6 +125,7 @@ func (d *Destroy) Execute() error {
 				if err := os.Remove(nodePath); err != nil {
 					d.Log().Warn("Failed to remove node file", "file", nodePath, "error", err)
 				} else {
+					d.result.NodesRemoved = append(d.result.NodesRemoved, entry.Name())
 					d.Term().Info().Printfln("Removed: %s", nodePath)
 				}
 			}

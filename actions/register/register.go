@@ -12,6 +12,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// RegisterResult is the structured output for node:register
+type RegisterResult struct {
+	Hostname  string   `json:"hostname"`
+	Platform  string   `json:"platform"`
+	PublicIP  string   `json:"public_ip"`
+	PrivateIP string   `json:"private_ip"`
+	Chassis   []string `json:"chassis,omitempty"`
+	File      string   `json:"file"`
+}
+
 // Register implements the node:register command
 type Register struct {
 	action.WithLogger
@@ -22,6 +32,13 @@ type Register struct {
 	PublicIP  string
 	PrivateIP string
 	Chassis   []string
+
+	result *RegisterResult
+}
+
+// Result returns the structured result for JSON output
+func (r *Register) Result() any {
+	return r.result
 }
 
 // Execute runs the node:register action
@@ -83,6 +100,16 @@ func (r *Register) Execute() error {
 
 	if err := os.WriteFile(nodeFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write node file: %w", err)
+	}
+
+	// Build result
+	r.result = &RegisterResult{
+		Hostname:  r.Hostname,
+		Platform:  r.EnvName,
+		PublicIP:  r.PublicIP,
+		PrivateIP: privateIP,
+		Chassis:   r.Chassis,
+		File:      nodeFile,
 	}
 
 	r.Term().Success().Printfln("Created node %s", r.Hostname)
