@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"github.com/hashicorp/terraform-exec/tfexec"
@@ -26,11 +27,35 @@ type TerraformManager struct {
 type ServerOutput struct {
 	Hostname   string
 	PublicIP   string
+	PrivateIP  string
 	PrivateMAC string
 	ServerID   string
 	Zone       string
+	Region     string
 	OfferName  string
 	Chassis    string
+	Provider   string
+}
+
+// ProviderConfig holds provider-agnostic configuration for HCL generation
+type ProviderConfig struct {
+	EnvName   string
+	Specs     []node.ChassisSpec
+	Provider  string
+	APIToken  string
+	Zone      string
+	Region    string
+	ProjectID string
+	Image     string
+	SSHKeyID  string
+}
+
+// providerTemplates maps provider names to their HCL templates
+var providerTemplates = map[string]string{}
+
+// RegisterTemplate registers an HCL template for a provider
+func RegisterTemplate(provider, tmpl string) {
+	providerTemplates[provider] = tmpl
 }
 
 // NewTerraformManager creates a new Terraform manager
@@ -73,27 +98,45 @@ func findTerraformBinary() (string, error) {
 	return "", fmt.Errorf("neither tofu nor terraform found in PATH")
 }
 
-// GenerateHCL generates Terraform HCL for Scaleway Dedibox
-func (m *TerraformManager) GenerateHCL(envName string, specs []node.ChassisSpec, apiToken string) error {
+// GenerateHCL generates Terraform HCL for the configured provider
+func (m *TerraformManager) GenerateHCL(config ProviderConfig) error {
 	mainFile := filepath.Join(m.workDir, "main.tf")
 
-	data := struct {
-		EnvName  string
-		APIToken string
-		Specs    []node.ChassisSpec
-	}{
-		EnvName:  envName,
-		APIToken: apiToken,
-		Specs:    specs,
+	tmplStr, ok := providerTemplates[config.Provider]
+	if !ok {
+		return fmt.Errorf("no terraform template registered for provider %q", config.Provider)
 	}
 
-	tmpl, err := template.New("main.tf").Parse(scalewayDediboxTemplate)
+	funcMap := template.FuncMap{
+		"seq": func(start, count int) []int {
+			s := make([]int, count)
+			for i := range s {
+				s[i] = start + i
+			}
+			return s
+		},
+		"add": func(a, b int) int { return a + b },
+		"replace": func(old, new, s string) string {
+			return strings.ReplaceAll(s, old, new)
+		},
+		"splitList": func(sep, s string) []string {
+			return strings.Split(s, sep)
+		},
+		"last": func(s []string) string {
+			if len(s) == 0 {
+				return ""
+			}
+			return s[len(s)-1]
+		},
+	}
+
+	tmpl, err := template.New("main.tf").Funcs(funcMap).Parse(tmplStr)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, config); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 
@@ -158,74 +201,3 @@ func (m *TerraformManager) GetWorkDir() string {
 	return m.workDir
 }
 
-// Scaleway Dedibox Terraform template
-const scalewayDediboxTemplate = `
-terraform {
-  required_providers {
-    scaleway = {
-      source  = "scaleway/scaleway"
-      version = ">= 2.50.0"
-    }
-  }
-}
-
-provider "scaleway" {
-  # API token from environment or variable
-  secret_key = var.api_token
-}
-
-variable "api_token" {
-  description = "Scaleway API token"
-  type        = string
-  sensitive   = true
-  default     = "{{ .APIToken }}"
-}
-
-variable "project_id" {
-  description = "Scaleway project ID"
-  type        = string
-  default     = ""
-}
-
-{{- range $i, $spec := .Specs }}
-
-# Data source for offer: {{ $spec.OfferType }}
-data "scaleway_dedibox_offer" "offer_{{ $i }}" {
-  name = "{{ $spec.OfferType }}"
-}
-
-{{- range $j := seq 0 $spec.Count }}
-
-resource "scaleway_dedibox_server" "{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}" {
-  offer_id   = data.scaleway_dedibox_offer.offer_{{ $i }}.offer_id
-  project_id = var.project_id != "" ? var.project_id : null
-  hostname   = "{{ $.EnvName }}-{{ $spec.Chassis | splitList "." | last }}-{{ printf "%03d" (add $j 1) }}"
-
-  tags = [
-    "env:{{ $.EnvName }}",
-    "chassis:{{ $spec.Chassis }}",
-    "managed-by:plasmactl"
-  ]
-}
-{{- end }}
-{{- end }}
-
-output "servers" {
-  description = "Provisioned servers"
-  value = {
-{{- range $i, $spec := .Specs }}
-{{- range $j := seq 0 $spec.Count }}
-    "{{ $.EnvName }}-{{ $spec.Chassis | splitList "." | last }}-{{ printf "%03d" (add $j 1) }}" = {
-      hostname    = scaleway_dedibox_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.hostname
-      public_ip   = scaleway_dedibox_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.public_ipv4
-      private_mac = scaleway_dedibox_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.interfaces[0].mac_address
-      server_id   = scaleway_dedibox_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.id
-      zone        = scaleway_dedibox_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.zone
-      offer_name  = "{{ $spec.OfferType }}"
-      chassis     = "{{ $spec.Chassis }}"
-    }
-{{- end }}
-{{- end }}
-  }
-}
-`

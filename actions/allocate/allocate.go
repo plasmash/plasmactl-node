@@ -9,6 +9,7 @@ import (
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	"github.com/plasmash/plasmactl-platform/pkg/graph"
 	"gopkg.in/yaml.v3"
 )
 
@@ -73,11 +74,30 @@ func (a *Allocate) Execute() error {
 		return a.showAllocations(&node)
 	}
 
+	// Load platform graph for chassis validation
+	var g *graph.PlatformGraph
+	if pg, err := graph.Load(); err == nil {
+		g = pg
+	}
+
 	// Parse and apply operations
 	ops := a.parseOperations()
 	modified := false
 
 	for _, op := range ops {
+		// Validate chassis paths against graph for add/replace operations
+		if g != nil && (op.Type == "add" || op.Type == "replace") {
+			target := op.Chassis
+			if op.Type == "replace" {
+				target = op.NewVal
+			}
+			if gNode := g.Node(target); gNode == nil {
+				a.Term().Warning().Printfln("Warning: %q not found in platform graph", target)
+			} else if gNode.Kind != "chassis" {
+				a.Term().Warning().Printfln("Warning: %q is a %s, not a chassis", target, gNode.Kind)
+			}
+		}
+
 		switch op.Type {
 		case "add":
 			if a.addChassis(&node, op.Chassis) {
@@ -132,21 +152,34 @@ func (a *Allocate) Execute() error {
 	return nil
 }
 
-// showAllocations displays current chassis allocations
-func (a *Allocate) showAllocations(node *node.Node) error {
-	a.Term().Info().Printfln("Node: %s", node.Hostname)
+// showAllocations displays current chassis allocations with component info from graph
+func (a *Allocate) showAllocations(n *node.Node) error {
+	a.Term().Info().Printfln("Node: %s", n.Hostname)
 	a.Term().Println()
 
-	if len(node.Chassis) == 0 {
+	if len(n.Chassis) == 0 {
 		a.Term().Warning().Println("No chassis allocations")
 		a.Term().Println()
 		a.Term().Info().Println("Tip: node:allocate HOSTNAME CHASSIS to add allocations")
 		return nil
 	}
 
+	// Load graph for component info
+	var g *graph.PlatformGraph
+	if pg, err := graph.Load(); err == nil {
+		g = pg
+	}
+
 	a.Term().Info().Println("Chassis allocations:")
-	for _, c := range node.Chassis {
+	for _, c := range n.Chassis {
 		a.Term().Printfln("  %s", c)
+		// Show attached components from graph
+		if g != nil {
+			attached := g.EdgesFrom(c, "attaches")
+			for _, e := range attached {
+				a.Term().Printfln("    → %s (%s)", e.To().Name, e.To().Kind)
+			}
+		}
 	}
 
 	a.Term().Println()

@@ -5,9 +5,8 @@ import (
 	"sort"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-chassis/pkg/chassis"
-	"github.com/plasmash/plasmactl-component/pkg/component"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	"github.com/plasmash/plasmactl-platform/pkg/graph"
 )
 
 // NodeMatch represents a node found by query
@@ -35,13 +34,11 @@ type Query struct {
 
 // Execute runs the query action
 func (q *Query) Execute() error {
-	// Load chassis for distribution computation
-	c, err := chassis.Load(".")
+	// Load platform graph
+	g, err := graph.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load platform graph: %w", err)
 	}
-
-	var matchingNodes []nodeMatch
 
 	// Load nodes by platform
 	nodesByPlatform, err := node.LoadByPlatform(".")
@@ -58,44 +55,68 @@ func (q *Query) Execute() error {
 		nodesByPlatform = filtered
 	}
 
-	// Search based on kind or auto-detect
+	var matchingNodes []nodeMatchEntry
+
 	searchChassis := q.Kind == "" || q.Kind == "chassis"
 	searchComponent := q.Kind == "" || q.Kind == "component"
 
-	// Try 1: Query by chassis path
-	if searchChassis && c.Exists(q.Identifier) {
-		for _, nodes := range nodesByPlatform {
-			allocations := nodes.Allocations(c)
-			for _, n := range nodes {
-				effectiveChassis := allocations[n.Hostname]
-				for _, chassisPath := range effectiveChassis {
-					if chassisPath == q.Identifier || chassis.IsDescendantOf(chassisPath, q.Identifier) {
-						matchingNodes = append(matchingNodes, nodeMatch{
-							n:      n,
-							reason: "chassis",
-						})
-						break
+	// Try 1: Query by chassis path using graph
+	if searchChassis {
+		gNode := g.Node(q.Identifier)
+		if gNode != nil && gNode.Kind == "chassis" {
+			// Find all chassis paths that are this chassis or its descendants
+			chassisPaths := map[string]bool{q.Identifier: true}
+			descendants := g.Descendants(q.Identifier, -1, "contains")
+			for _, d := range descendants {
+				if d.Kind == "chassis" {
+					chassisPaths[d.Name] = true
+				}
+			}
+
+			for platform, nodes := range nodesByPlatform {
+				for _, n := range nodes {
+					for _, c := range n.Chassis {
+						if chassisPaths[c] {
+							matchingNodes = append(matchingNodes, nodeMatchEntry{
+								n:        n,
+								platform: platform,
+							})
+							break
+						}
 					}
 				}
 			}
 		}
 	}
 
-	// Try 2: Query by component name (find nodes that run the component's chassis path)
+	// Try 2: Query by component name - find its chassis attachment via graph
 	if searchComponent && len(matchingNodes) == 0 {
-		components, err := component.LoadFromPlaybooks(".")
-		if err == nil {
-			comp := components.Find(q.Identifier)
-			if comp != nil && comp.Chassis != "" {
-				for _, nodes := range nodesByPlatform {
-					allocations := nodes.Allocations(c)
+		gNode := g.Node(q.Identifier)
+		if gNode != nil && gNode.Kind != "chassis" && gNode.Kind != "node" {
+			// Find chassis that attaches this component (reverse: chassis --attaches--> component)
+			ancestors := g.Ancestors(q.Identifier, 1, "attaches")
+			chassisPaths := make(map[string]bool)
+			for _, a := range ancestors {
+				if a.Kind == "chassis" {
+					chassisPaths[a.Name] = true
+					// Also include descendant chassis
+					descendants := g.Descendants(a.Name, -1, "contains")
+					for _, d := range descendants {
+						if d.Kind == "chassis" {
+							chassisPaths[d.Name] = true
+						}
+					}
+				}
+			}
+
+			if len(chassisPaths) > 0 {
+				for platform, nodes := range nodesByPlatform {
 					for _, n := range nodes {
-						effectiveChassis := allocations[n.Hostname]
-						for _, chassisPath := range effectiveChassis {
-							if chassisPath == comp.Chassis || chassis.IsDescendantOf(chassisPath, comp.Chassis) {
-								matchingNodes = append(matchingNodes, nodeMatch{
-									n:      n,
-									reason: fmt.Sprintf("component:%s", comp.Chassis),
+						for _, c := range n.Chassis {
+							if chassisPaths[c] {
+								matchingNodes = append(matchingNodes, nodeMatchEntry{
+									n:        n,
+									platform: platform,
 								})
 								break
 							}
@@ -113,17 +134,17 @@ func (q *Query) Execute() error {
 
 	// Sort by platform, then hostname
 	sort.Slice(matchingNodes, func(i, j int) bool {
-		if matchingNodes[i].n.Platform != matchingNodes[j].n.Platform {
-			return matchingNodes[i].n.Platform < matchingNodes[j].n.Platform
+		if matchingNodes[i].platform != matchingNodes[j].platform {
+			return matchingNodes[i].platform < matchingNodes[j].platform
 		}
 		return matchingNodes[i].n.Hostname < matchingNodes[j].n.Hostname
 	})
 
-	// Build result - output is handled by launchr
+	// Build result
 	for _, m := range matchingNodes {
 		q.result.Nodes = append(q.result.Nodes, NodeMatch{
 			Node:     m.n.Hostname,
-			Platform: m.n.Platform,
+			Platform: m.platform,
 		})
 	}
 
@@ -135,7 +156,7 @@ func (q *Query) Result() any {
 	return q.result
 }
 
-type nodeMatch struct {
-	n      node.Node
-	reason string
+type nodeMatchEntry struct {
+	n        node.Node
+	platform string
 }

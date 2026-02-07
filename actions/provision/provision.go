@@ -13,6 +13,7 @@ import (
 	"github.com/plasmash/plasmactl-node/internal/allocator"
 	"github.com/plasmash/plasmactl-node/internal/terraform"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	"github.com/plasmash/plasmactl-platform/pkg/graph"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -95,18 +96,10 @@ func (p *Provision) Execute() error {
 
 	// Provider-specific provisioning
 	switch platform.Infrastructure.MetalProvider {
-	case "scaleway":
-		return p.provisionScaleway(envDir, nodesDir, platform, specs)
-	case "hetzner":
-		return fmt.Errorf("hetzner provider not yet implemented")
-	case "aws":
-		return fmt.Errorf("aws provider not yet implemented")
-	case "ovh":
-		return fmt.Errorf("ovh provider not yet implemented")
 	case "manual":
 		return fmt.Errorf("cannot provision with manual provider - use env:node to add nodes manually")
 	default:
-		return fmt.Errorf("unknown provider: %s", platform.Infrastructure.MetalProvider)
+		return p.provisionWithTerraform(envDir, nodesDir, platform, specs)
 	}
 }
 
@@ -149,22 +142,47 @@ func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]node.ChassisS
 	return specs, nil
 }
 
-// provisionScaleway provisions infrastructure using Scaleway Dedibox
-func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.Platform, specs []node.ChassisSpec) error {
+// resolveAPIToken resolves the API token from platform config, using keyring if templated
+func (p *Provision) resolveAPIToken(platform schema.Platform) (string, error) {
+	apiToken := platform.Infrastructure.API.Token
+	if apiToken == "" {
+		return "", nil
+	}
+
+	if strings.HasPrefix(apiToken, "{{ .keyring.") {
+		// Resolve keyring URL from provider name
+		provider := platform.Infrastructure.MetalProvider
+		token, err := p.Keyring.GetForURL(provider)
+		if err != nil {
+			return "", fmt.Errorf("failed to get API token from keyring for %s: %w", provider, err)
+		}
+		return token.Password, nil
+	}
+
+	return apiToken, nil
+}
+
+// provisionWithTerraform provisions infrastructure using Terraform with the registered provider template
+func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform schema.Platform, specs []node.ChassisSpec) error {
 	ctx := context.Background()
 
-	// Get API token
-	apiToken := platform.Infrastructure.API.Token
-	if strings.HasPrefix(apiToken, "{{ .keyring.") {
-		// Extract key name and fetch from keyring
-		keyName := strings.TrimPrefix(apiToken, "{{ .keyring.")
-		keyName = strings.TrimSuffix(keyName, " }}")
+	// Resolve API token
+	apiToken, err := p.resolveAPIToken(platform)
+	if err != nil {
+		return err
+	}
 
-		token, err := p.Keyring.GetForURL("scaleway")
-		if err != nil {
-			return fmt.Errorf("failed to get API token from keyring: %w", err)
-		}
-		apiToken = token.Password
+	// Build provider config from platform infrastructure fields
+	config := terraform.ProviderConfig{
+		EnvName:   p.Name,
+		Specs:     specs,
+		Provider:  platform.Infrastructure.MetalProvider,
+		APIToken:  apiToken,
+		Zone:      platform.Infrastructure.Zone,
+		Region:    platform.Infrastructure.Region,
+		ProjectID: platform.Infrastructure.ProjectID,
+		Image:     platform.Infrastructure.Image,
+		SSHKeyID:  platform.Infrastructure.SSHKeyID,
 	}
 
 	// Create Terraform manager
@@ -176,7 +194,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 	p.Term().Info().Printfln("Generating Terraform configuration...")
 
 	// Generate HCL
-	if err := tfManager.GenerateHCL(p.Name, specs, apiToken); err != nil {
+	if err := tfManager.GenerateHCL(config); err != nil {
 		return fmt.Errorf("failed to generate terraform HCL: %w", err)
 	}
 
@@ -225,7 +243,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 		return fmt.Errorf("failed to get terraform outputs: %w", err)
 	}
 
-	// Create IP allocator for private IPs
+	// Create IP allocator for private IPs (used when provider doesn't supply them)
 	ipAlloc, err := allocator.NewIPAllocator(platform.Networking.PrivateNetwork, nodesDir)
 	if err != nil {
 		return fmt.Errorf("failed to create IP allocator: %w", err)
@@ -238,10 +256,13 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 
 	// Generate node files
 	for _, server := range servers {
-		// Allocate private IP
-		privateIP, err := ipAlloc.Allocate()
-		if err != nil {
-			return fmt.Errorf("failed to allocate private IP: %w", err)
+		// Use provider-supplied private IP if available, otherwise allocate from CIDR
+		privateIP := server.PrivateIP
+		if privateIP == "" {
+			privateIP, err = ipAlloc.Allocate()
+			if err != nil {
+				return fmt.Errorf("failed to allocate private IP: %w", err)
+			}
 		}
 
 		n := &node.Node{
@@ -256,6 +277,7 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 			ProviderMetadata: node.ProviderMetadata{
 				ServerID:  server.ServerID,
 				Zone:      server.Zone,
+				Region:    server.Region,
 				OfferName: server.OfferName,
 			},
 		}
@@ -284,6 +306,9 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 
 	p.Term().Success().Printfln("Provisioned %d nodes", len(servers))
 
+	// Show what components will be deployed on the new nodes
+	p.showProvisionImpact(specs)
+
 	// Update platform.yaml with chassis configuration if it was provided via CLI
 	if len(p.ChassisSpec) > 0 {
 		platform.Chassis = make(map[string][]schema.ChassisProfile)
@@ -308,4 +333,42 @@ func (p *Provision) provisionScaleway(envDir, nodesDir string, platform schema.P
 	}
 
 	return nil
+}
+
+// showProvisionImpact loads the platform graph and shows what components
+// will be deployed on the provisioned chassis paths.
+func (p *Provision) showProvisionImpact(specs []node.ChassisSpec) {
+	g, err := graph.Load()
+	if err != nil {
+		p.Log().Debug("Platform graph not available for impact display", "error", err)
+		return
+	}
+
+	p.Term().Println()
+	p.Term().Info().Println("Deployment impact:")
+
+	seen := make(map[string]bool)
+	for _, spec := range specs {
+		if seen[spec.Chassis] {
+			continue
+		}
+		seen[spec.Chassis] = true
+
+		gNode := g.Node(spec.Chassis)
+		if gNode == nil {
+			p.Term().Warning().Printfln("  %s: not found in platform graph", spec.Chassis)
+			continue
+		}
+
+		attached := g.EdgesFrom(spec.Chassis, "attaches")
+		if len(attached) == 0 {
+			p.Term().Info().Printfln("  %s: no components attached", spec.Chassis)
+			continue
+		}
+
+		p.Term().Info().Printfln("  %s:", spec.Chassis)
+		for _, e := range attached {
+			p.Term().Printfln("    %s (%s)", e.To().Name, e.To().Kind)
+		}
+	}
 }

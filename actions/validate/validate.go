@@ -8,6 +8,7 @@ import (
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	"github.com/plasmash/plasmactl-platform/pkg/graph"
 )
 
 // ValidationCheck represents a single validation check result
@@ -44,6 +45,7 @@ type Validate struct {
 	Env          string
 	CheckChassis bool
 
+	graph  *graph.PlatformGraph
 	result *ValidateResult
 }
 
@@ -55,6 +57,14 @@ func (v *Validate) Result() any {
 // Execute runs the node:validate action
 func (v *Validate) Execute() error {
 	v.result = &ValidateResult{}
+
+	// Load platform graph for chassis validation
+	if g, err := graph.Load(); err == nil {
+		v.graph = g
+		v.Log().Debug("Platform graph loaded", "nodes", g.NodeCount(), "edges", g.EdgeCount())
+	} else {
+		v.Log().Debug("Platform graph not available, chassis validation will be limited", "error", err)
+	}
 
 	// Determine what to validate
 	if v.Identifier == "" {
@@ -278,6 +288,44 @@ func (v *Validate) validateNode(n node.Node, nodesDir string, publicIPs, private
 			Status: "pass",
 			Value:  fmt.Sprintf("%d allocations", len(n.Chassis)),
 		})
+
+		// Validate chassis paths against the platform graph
+		if v.graph != nil {
+			for _, chassisPath := range n.Chassis {
+				gNode := v.graph.Node(chassisPath)
+				if gNode == nil {
+					validation.Checks = append(validation.Checks, ValidationCheck{
+						Name:   "chassis_exists",
+						Status: "fail",
+						Value:  chassisPath,
+					})
+					v.Term().Error().Printfln("  ✗ %s: chassis %q not found in platform graph", n.DisplayName(), chassisPath)
+					hasErrors = true
+				} else if gNode.Kind != "chassis" {
+					validation.Checks = append(validation.Checks, ValidationCheck{
+						Name:   "chassis_type",
+						Status: "fail",
+						Value:  fmt.Sprintf("%s is %s, not chassis", chassisPath, gNode.Kind),
+					})
+					v.Term().Error().Printfln("  ✗ %s: %q is a %s, not a chassis", n.DisplayName(), chassisPath, gNode.Kind)
+					hasErrors = true
+				} else {
+					// Show what's attached to this chassis
+					attached := v.graph.EdgesFrom(chassisPath, "attaches")
+					if len(attached) > 0 {
+						names := make([]string, len(attached))
+						for i, e := range attached {
+							names[i] = e.To().Name
+						}
+						validation.Checks = append(validation.Checks, ValidationCheck{
+							Name:   "chassis_components",
+							Status: "pass",
+							Value:  fmt.Sprintf("%s: %d components attached", chassisPath, len(attached)),
+						})
+					}
+				}
+			}
+		}
 	}
 
 	validation.HasErrors = hasErrors
