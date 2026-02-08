@@ -25,16 +25,17 @@ type TerraformManager struct {
 
 // ServerOutput represents a provisioned server from Terraform
 type ServerOutput struct {
-	Hostname   string
-	PublicIP   string
-	PrivateIP  string
-	PrivateMAC string
-	ServerID   string
-	Zone       string
-	Region     string
-	OfferName  string
-	Chassis    string
-	Provider   string
+	Hostname   string `json:"hostname"`
+	PublicIP   string `json:"public_ip"`
+	FailoverIP string `json:"failover_ip"`
+	PrivateIP  string `json:"private_ip"`
+	PrivateMAC string `json:"private_mac"`
+	ServerID   string `json:"server_id"`
+	Zone       string `json:"zone"`
+	Region     string `json:"region"`
+	OfferName  string `json:"offer_name"`
+	Chassis    string `json:"chassis"`
+	Provider   string `json:"provider"`
 }
 
 // ProviderConfig holds provider-agnostic configuration for HCL generation

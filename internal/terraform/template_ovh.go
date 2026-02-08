@@ -112,6 +112,7 @@ output "servers" {
     "{{ $.EnvName }}-{{ $spec.Chassis | splitList "." | last }}-{{ printf "%03d" (add $j 1) }}" = {
       hostname    = ovh_dedicated_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.display_name
       public_ip   = ovh_dedicated_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.ip
+      failover_ip = ""
       private_ip  = ""
 {{- if $.ProjectID }}
       private_mac = try(data.ovh_dedicated_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}_data.vnis[1].nics[0], "")

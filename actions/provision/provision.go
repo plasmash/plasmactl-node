@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/plasmash/plasmactl-node/internal/allocator"
 	"github.com/plasmash/plasmactl-node/internal/terraform"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	"github.com/plasmash/plasmactl-platform/pkg/dns"
 	"github.com/plasmash/plasmactl-platform/pkg/graph"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
@@ -227,7 +229,14 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 	// Confirm if not auto-approve
 	if !p.AutoApprove {
 		p.Term().Warning().Println("This will provision infrastructure (incurring costs)")
-		// TODO: Add interactive confirmation
+		p.Term().Warning().Print("Do you want to apply these changes? [y/N]: ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			p.Term().Info().Println("Aborted.")
+			return nil
+		}
 	}
 
 	// Apply
@@ -270,9 +279,10 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 			Chassis:  []string{server.Chassis},
 			Profile:  server.OfferName,
 			Network: node.Network{
-				PublicIP:   server.PublicIP,
-				PrivateIP:  privateIP,
-				PrivateMAC: server.PrivateMAC,
+				PublicIP:    server.PublicIP,
+				FailoverIP:  server.FailoverIP,
+				PrivateIP:   privateIP,
+				PrivateMAC:  server.PrivateMAC,
 			},
 			ProviderMetadata: node.ProviderMetadata{
 				ServerID:  server.ServerID,
@@ -332,7 +342,123 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 		}
 	}
 
+	// Configure DNS records using provisioned IPs
+	if platform.DNS.Provider != "" && platform.DNS.Provider != "manual" {
+		p.configureDNS(ctx, envDir, platform, servers)
+	}
+
 	return nil
+}
+
+// configureDNS sets up DNS records using provisioned server IPs.
+// Failure is non-fatal - infrastructure is already provisioned.
+func (p *Provision) configureDNS(ctx context.Context, envDir string, platform schema.Platform, servers []terraform.ServerOutput) {
+	p.Term().Println()
+	p.Term().Info().Println("Configuring DNS records...")
+
+	// Find ingress IPs from provisioned servers
+	var webIP, mailIP string
+	for _, s := range servers {
+		if strings.Contains(s.Chassis, "ingress.web") {
+			if s.FailoverIP != "" {
+				webIP = s.FailoverIP
+			} else {
+				webIP = s.PublicIP
+			}
+		}
+		if strings.Contains(s.Chassis, "ingress.mail") {
+			if s.FailoverIP != "" {
+				mailIP = s.FailoverIP
+			} else {
+				mailIP = s.PublicIP
+			}
+		}
+	}
+
+	if webIP == "" && mailIP == "" {
+		p.Term().Info().Println("  No ingress nodes provisioned, skipping DNS")
+		return
+	}
+
+	// Resolve DNS credentials from keyring
+	username, token, err := p.resolveDNSCredentials(platform)
+	if err != nil {
+		p.Term().Warning().Printfln("  DNS skipped: %v", err)
+		return
+	}
+
+	zone := platform.DNS.Zone
+	if zone == "" {
+		zone = dns.DeriveZone(platform.DNS.Domain)
+	}
+
+	config := dns.Config{
+		Provider:     platform.DNS.Provider,
+		APIToken:     token,
+		APIUsername:   username,
+		Domain:       platform.DNS.Domain,
+		Zone:         zone,
+		Subdomain:    dns.DeriveSubdomain(platform.DNS.Domain, zone),
+		Region:       platform.DNS.Region,
+		WebIP:        webIP,
+		MailIP:       mailIP,
+		DKIMSelector: "default",
+		DKIMKey:      platform.DNS.DKIMKey,
+	}
+
+	dnsManager, err := dns.NewManager(envDir)
+	if err != nil {
+		p.Term().Warning().Printfln("  DNS failed: %v", err)
+		return
+	}
+
+	if err := dnsManager.GenerateHCL(config); err != nil {
+		p.Term().Warning().Printfln("  DNS generation failed: %v", err)
+		return
+	}
+
+	p.Term().Info().Printfln("  Generated: %s/main.tf", dnsManager.GetWorkDir())
+
+	if p.DryRun {
+		p.Term().Info().Println("  DNS dry run - skipping apply")
+		return
+	}
+
+	if err := dnsManager.Apply(ctx); err != nil {
+		p.Term().Warning().Printfln("  DNS apply failed: %v", err)
+		p.Term().Warning().Println("  You can re-run provisioning to retry DNS setup")
+		return
+	}
+
+	p.Term().Success().Println("DNS records configured")
+	if webIP != "" {
+		p.Term().Info().Printfln("  A / *.A → %s", webIP)
+	}
+	if mailIP != "" {
+		p.Term().Info().Printfln("  MX / SPF → %s", mailIP)
+	}
+}
+
+// resolveDNSCredentials resolves DNS credentials (username + token/password) from keyring
+func (p *Provision) resolveDNSCredentials(platform schema.Platform) (username, token string, err error) {
+	if p.Keyring == nil {
+		return "", "", fmt.Errorf("keyring not available")
+	}
+
+	// Try DNS provider name first
+	cred, err := p.Keyring.GetForURL(platform.DNS.Provider)
+	if err != nil {
+		// If DNS provider matches metal provider, credentials are shared
+		if platform.DNS.Provider == platform.Infrastructure.MetalProvider {
+			cred, err = p.Keyring.GetForURL(platform.Infrastructure.MetalProvider)
+			if err != nil {
+				return "", "", fmt.Errorf("no credentials for %s (run: plasmactl keyring:login %s)", platform.DNS.Provider, platform.DNS.Provider)
+			}
+			return cred.Username, cred.Password, nil
+		}
+		return "", "", fmt.Errorf("no DNS credentials for %s (run: plasmactl keyring:login %s)", platform.DNS.Provider, platform.DNS.Provider)
+	}
+	return cred.Username, cred.Password, nil
 }
 
 // showProvisionImpact loads the platform graph and shows what components

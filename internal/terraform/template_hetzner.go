@@ -61,6 +61,7 @@ output "servers" {
     "{{ $.EnvName }}-{{ $spec.Chassis | splitList "." | last }}-{{ printf "%03d" (add $j 1) }}" = {
       hostname    = hcloud_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.name
       public_ip   = hcloud_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.ipv4_address
+      failover_ip = ""
       private_ip  = ""
       private_mac = ""
       server_id   = tostring(hcloud_server.{{ $.EnvName | replace "-" "_" }}_{{ $spec.Chassis | replace "." "_" }}_{{ $j }}.id)
