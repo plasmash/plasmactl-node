@@ -126,6 +126,11 @@ func (a *Allocate) Execute() error {
 	}
 
 	if !modified {
+		a.result = &AllocateResult{
+			Hostname: node.Hostname,
+			Chassis:  node.Chassis,
+			Modified: false,
+		}
 		return nil
 	}
 

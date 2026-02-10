@@ -54,6 +54,8 @@ func (s *Show) Result() any {
 
 // Execute runs the node:show action
 func (s *Show) Execute() error {
+	s.result = &ShowResult{}
+
 	// Find node by hostname across all platforms
 	instDir := "inst"
 	entries, err := os.ReadDir(instDir)

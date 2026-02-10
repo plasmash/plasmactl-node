@@ -38,6 +38,8 @@ func (l *List) Result() any {
 
 // Execute runs the node:list action
 func (l *List) Execute() error {
+	l.result = &ListResult{}
+
 	// Load nodes by platform
 	nodesByPlatform, err := node.LoadByPlatform(".")
 	if err != nil {
@@ -48,9 +50,6 @@ func (l *List) Execute() error {
 		l.Term().Warning().Println("No nodes found")
 		return nil
 	}
-
-	// Build result - collect all nodes across platforms
-	l.result = &ListResult{}
 	var allNodes []node.Node
 
 	// Sort platforms for consistent ordering
