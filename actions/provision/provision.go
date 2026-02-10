@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/internal/allocator"
-	"github.com/plasmash/plasmactl-node/internal/terraform"
+	"github.com/plasmash/plasmactl-node/internal/provisioner"
 	"github.com/plasmash/plasmactl-node/pkg/node"
 	"github.com/plasmash/plasmactl-platform/pkg/dns"
 	"github.com/plasmash/plasmactl-platform/pkg/graph"
@@ -25,7 +26,7 @@ type ProvisionedNode struct {
 	Hostname  string `json:"hostname"`
 	PublicIP  string `json:"public_ip"`
 	PrivateIP string `json:"private_ip"`
-	Chassis   string `json:"chassis"`
+	Pool      string `json:"pool"`
 }
 
 // ProvisionResult is the structured output for node:provision
@@ -43,7 +44,6 @@ type Provision struct {
 
 	Keyring     keyring.Keyring
 	Name        string
-	ChassisSpec []string
 	DryRun      bool
 	AutoApprove bool
 
@@ -77,15 +77,12 @@ func (p *Provision) Execute() error {
 		return fmt.Errorf("failed to parse platform.yaml: %w", err)
 	}
 
-	// Parse chassis specifications from command line or platform.yaml
-	specs, err := p.parseChassisSpecs(platform)
-	if err != nil {
-		return fmt.Errorf("failed to parse chassis specs: %w", err)
+	// Read pools from platform.yaml
+	if len(platform.Pools) == 0 {
+		return fmt.Errorf("no pools configured (run: plasmactl platform:size %s --suggest)", p.Name)
 	}
 
-	if len(specs) == 0 {
-		return fmt.Errorf("no chassis specifications provided (use -c flag or configure chassis in platform.yaml)")
-	}
+	pools := poolsToSpecs(platform.Pools)
 
 	// Initialize result
 	p.result = &ProvisionResult{
@@ -99,49 +96,24 @@ func (p *Provision) Execute() error {
 	// Provider-specific provisioning
 	switch platform.Infrastructure.MetalProvider {
 	case "manual":
-		return fmt.Errorf("cannot provision with manual provider - use env:node to add nodes manually")
+		return fmt.Errorf("cannot provision with manual provider - use node:add to add nodes manually")
 	default:
-		return p.provisionWithTerraform(envDir, nodesDir, platform, specs)
+		return p.provisionInfra(nodesDir, platform, pools)
 	}
 }
 
-// parseChassisSpecs parses chassis specifications from CLI or platform.yaml
-func (p *Provision) parseChassisSpecs(platform schema.Platform) ([]node.ChassisSpec, error) {
-	var specs []node.ChassisSpec
-
-	// First, use CLI specifications if provided
-	for _, spec := range p.ChassisSpec {
-		parts := strings.Split(spec, ":")
-		if len(parts) != 3 {
-			return nil, fmt.Errorf("invalid chassis spec %q - expected format chassis:offer:count", spec)
-		}
-
-		count, err := strconv.Atoi(parts[2])
-		if err != nil {
-			return nil, fmt.Errorf("invalid count in chassis spec %q: %w", spec, err)
-		}
-
-		specs = append(specs, node.ChassisSpec{
-			Chassis:   parts[0],
-			OfferType: parts[1],
-			Count:     count,
+// poolsToSpecs converts platform.yaml pools to PoolSpecs.
+func poolsToSpecs(pools map[string]schema.Pool) []node.PoolSpec {
+	var specs []node.PoolSpec
+	for name, pool := range pools {
+		specs = append(specs, node.PoolSpec{
+			Name:    name,
+			Chassis: pool.Chassis,
+			Machine: pool.Machine,
+			Count:   pool.Count,
 		})
 	}
-
-	// If no CLI specs, use platform.yaml chassis configuration
-	if len(specs) == 0 && platform.Chassis != nil {
-		for chassis, profiles := range platform.Chassis {
-			for _, profile := range profiles {
-				specs = append(specs, node.ChassisSpec{
-					Chassis:   chassis,
-					OfferType: profile.Type,
-					Count:     profile.Count,
-				})
-			}
-		}
-	}
-
-	return specs, nil
+	return specs
 }
 
 // resolveAPIToken resolves the API token from platform config, using keyring if templated
@@ -152,7 +124,6 @@ func (p *Provision) resolveAPIToken(platform schema.Platform) (string, error) {
 	}
 
 	if strings.HasPrefix(apiToken, "{{ .keyring.") {
-		// Resolve keyring URL from provider name
 		provider := platform.Infrastructure.MetalProvider
 		token, err := p.Keyring.GetForURL(provider)
 		if err != nil {
@@ -164,8 +135,8 @@ func (p *Provision) resolveAPIToken(platform schema.Platform) (string, error) {
 	return apiToken, nil
 }
 
-// provisionWithTerraform provisions infrastructure using Terraform with the registered provider template
-func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform schema.Platform, specs []node.ChassisSpec) error {
+// provisionInfra provisions infrastructure using OpenTofu with the registered provider template
+func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, pools []node.PoolSpec) error {
 	ctx := context.Background()
 
 	// Resolve API token
@@ -174,45 +145,57 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 		return err
 	}
 
+	// Scan existing node files to build import list
+	existingNodes := p.scanExistingNodes(nodesDir, pools)
+	if len(existingNodes) > 0 {
+		p.Term().Info().Printfln("Found %d existing nodes to import", len(existingNodes))
+	}
+
 	// Build provider config from platform infrastructure fields
-	config := terraform.ProviderConfig{
-		EnvName:   p.Name,
-		Specs:     specs,
-		Provider:  platform.Infrastructure.MetalProvider,
-		APIToken:  apiToken,
-		Zone:      platform.Infrastructure.Zone,
-		Region:    platform.Infrastructure.Region,
-		ProjectID: platform.Infrastructure.ProjectID,
-		Image:     platform.Infrastructure.Image,
-		SSHKeyID:  platform.Infrastructure.SSHKeyID,
+	config := provisioner.ProviderConfig{
+		EnvName:       p.Name,
+		Pools:         pools,
+		Provider:      platform.Infrastructure.MetalProvider,
+		APIToken:      apiToken,
+		Zone:          platform.Infrastructure.Zone,
+		Region:        platform.Infrastructure.Region,
+		ProjectID:     platform.Infrastructure.ProjectID,
+		Image:         platform.Infrastructure.Image,
+		SSHKeyID:      platform.Infrastructure.SSHKeyID,
+		ExistingNodes: existingNodes,
 	}
 
-	// Create Terraform manager
-	tfManager, err := terraform.NewTerraformManager(envDir, p.DryRun, p.AutoApprove)
+	// Create provisioner manager (workdir: .plasma/provision/<envName>/)
+	mgr, err := provisioner.NewManager(p.Name, p.DryRun, p.AutoApprove)
 	if err != nil {
-		return fmt.Errorf("failed to create terraform manager: %w", err)
+		return fmt.Errorf("failed to create provisioner: %w", err)
 	}
 
-	p.Term().Info().Printfln("Generating Terraform configuration...")
+	// Clean stale state — import blocks in HCL are the sole source of truth
+	if err := mgr.CleanState(); err != nil {
+		return fmt.Errorf("failed to clean provisioning state: %w", err)
+	}
+
+	p.Term().Info().Printfln("Generating HCL configuration...")
 
 	// Generate HCL
-	if err := tfManager.GenerateHCL(config); err != nil {
-		return fmt.Errorf("failed to generate terraform HCL: %w", err)
+	if err := mgr.GenerateHCL(config); err != nil {
+		return fmt.Errorf("failed to generate HCL: %w", err)
 	}
 
-	p.Term().Info().Printfln("Generated: %s/main.tf", tfManager.GetWorkDir())
+	p.Term().Info().Printfln("Generated: %s/main.tf", mgr.GetWorkDir())
 
-	// Initialize Terraform
-	p.Term().Info().Println("Initializing Terraform...")
-	if err := tfManager.Init(ctx); err != nil {
-		return fmt.Errorf("terraform init failed: %w", err)
+	// Initialize
+	p.Term().Info().Println("Initializing provisioner...")
+	if err := mgr.Init(ctx); err != nil {
+		return fmt.Errorf("provisioner init failed: %w", err)
 	}
 
 	// Plan
 	p.Term().Info().Println("Planning changes...")
-	hasChanges, err := tfManager.Plan(ctx)
+	hasChanges, err := mgr.Plan(ctx)
 	if err != nil {
-		return fmt.Errorf("terraform plan failed: %w", err)
+		return fmt.Errorf("provisioner plan failed: %w", err)
 	}
 
 	if !hasChanges {
@@ -222,7 +205,7 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 
 	if p.DryRun {
 		p.Term().Warning().Println("Dry run - skipping apply")
-		p.Term().Info().Printfln("Review the plan at: %s", tfManager.GetWorkDir())
+		p.Term().Info().Printfln("Review the plan at: %s", mgr.GetWorkDir())
 		return nil
 	}
 
@@ -241,15 +224,21 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 
 	// Apply
 	p.Term().Info().Println("Applying changes...")
-	if err := tfManager.Apply(ctx); err != nil {
-		return fmt.Errorf("terraform apply failed: %w", err)
+	if err := mgr.Apply(ctx); err != nil {
+		return fmt.Errorf("provisioner apply failed: %w", err)
 	}
 
 	// Get outputs and generate node files
 	p.Term().Info().Println("Generating node files...")
-	servers, err := tfManager.GetOutputs(ctx)
+	servers, err := mgr.GetOutputs(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get terraform outputs: %w", err)
+		return fmt.Errorf("failed to get provisioning outputs: %w", err)
+	}
+
+	// Build pool lookup by name for chassis resolution
+	poolsByName := make(map[string]node.PoolSpec)
+	for _, pool := range pools {
+		poolsByName[pool.Name] = pool
 	}
 
 	// Create IP allocator for private IPs (used when provider doesn't supply them)
@@ -274,21 +263,24 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 			}
 		}
 
+		// Resolve chassis list from pool
+		pool := poolsByName[server.Pool]
+
 		n := &node.Node{
 			Hostname: server.Hostname,
-			Chassis:  []string{server.Chassis},
-			Profile:  server.OfferName,
+			Chassis:  pool.Chassis,
+			Machine:  server.Machine,
 			Network: node.Network{
-				PublicIP:    server.PublicIP,
-				FailoverIP:  server.FailoverIP,
-				PrivateIP:   privateIP,
-				PrivateMAC:  server.PrivateMAC,
+				PublicIP:   server.PublicIP,
+				FailoverIP: server.FailoverIP,
+				PrivateIP:  privateIP,
+				PrivateMAC: server.PrivateMAC,
 			},
 			ProviderMetadata: node.ProviderMetadata{
-				ServerID:  server.ServerID,
-				Zone:      server.Zone,
-				Region:    server.Region,
-				OfferName: server.OfferName,
+				ServerID: server.ServerID,
+				Zone:     server.Zone,
+				Region:   server.Region,
+				Machine:  server.Machine,
 			},
 		}
 		n.AddChassisLabels()
@@ -308,43 +300,20 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 			Hostname:  server.Hostname,
 			PublicIP:  server.PublicIP,
 			PrivateIP: privateIP,
-			Chassis:   server.Chassis,
+			Pool:      server.Pool,
 		})
 
-		p.Term().Success().Printfln("Created node: %s (%s)", server.Hostname, server.PublicIP)
+		p.Term().Success().Printfln("Created node: %s (%s) [pool: %s]", server.Hostname, server.PublicIP, server.Pool)
 	}
 
-	p.Term().Success().Printfln("Provisioned %d nodes", len(servers))
+	p.Term().Success().Printfln("Provisioned %d nodes across %d pools", len(servers), len(pools))
 
-	// Show what components will be deployed on the new nodes
-	p.showProvisionImpact(specs)
-
-	// Update platform.yaml with chassis configuration if it was provided via CLI
-	if len(p.ChassisSpec) > 0 {
-		platform.Chassis = make(map[string][]schema.ChassisProfile)
-		for _, spec := range specs {
-			platform.Chassis[spec.Chassis] = append(platform.Chassis[spec.Chassis], schema.ChassisProfile{
-				Type:  spec.OfferType,
-				Count: spec.Count,
-			})
-		}
-
-		data, err := yaml.Marshal(platform)
-		if err != nil {
-			p.Log().Warn("Failed to update platform.yaml", "error", err)
-		} else {
-			platformFile := filepath.Join(envDir, "platform.yaml")
-			if err := os.WriteFile(platformFile, data, 0644); err != nil {
-				p.Log().Warn("Failed to write platform.yaml", "error", err)
-			} else {
-				p.Term().Info().Println("Updated platform.yaml with chassis configuration")
-			}
-		}
-	}
+	// Show what components will be deployed
+	p.showProvisionImpact(pools)
 
 	// Configure DNS records using provisioned IPs
 	if platform.DNS.Provider != "" && platform.DNS.Provider != "manual" {
-		p.configureDNS(ctx, envDir, platform, servers)
+		p.configureDNS(ctx, platform, servers)
 	}
 
 	return nil
@@ -352,24 +321,19 @@ func (p *Provision) provisionWithTerraform(envDir, nodesDir string, platform sch
 
 // configureDNS sets up DNS records using provisioned server IPs.
 // Failure is non-fatal - infrastructure is already provisioned.
-func (p *Provision) configureDNS(ctx context.Context, envDir string, platform schema.Platform, servers []terraform.ServerOutput) {
+func (p *Provision) configureDNS(ctx context.Context, platform schema.Platform, servers []provisioner.ServerOutput) {
 	p.Term().Println()
 	p.Term().Info().Println("Configuring DNS records...")
 
 	// Find ingress IPs from provisioned servers
 	var webIP, mailIP string
 	for _, s := range servers {
-		if strings.Contains(s.Chassis, "ingress.web") {
+		if strings.Contains(s.Pool, "ingress") {
 			if s.FailoverIP != "" {
 				webIP = s.FailoverIP
-			} else {
-				webIP = s.PublicIP
-			}
-		}
-		if strings.Contains(s.Chassis, "ingress.mail") {
-			if s.FailoverIP != "" {
 				mailIP = s.FailoverIP
 			} else {
+				webIP = s.PublicIP
 				mailIP = s.PublicIP
 			}
 		}
@@ -406,7 +370,7 @@ func (p *Provision) configureDNS(ctx context.Context, envDir string, platform sc
 		DKIMKey:      platform.DNS.DKIMKey,
 	}
 
-	dnsManager, err := dns.NewManager(envDir)
+	dnsManager, err := dns.NewManager(p.Name)
 	if err != nil {
 		p.Term().Warning().Printfln("  DNS failed: %v", err)
 		return
@@ -445,10 +409,8 @@ func (p *Provision) resolveDNSCredentials(platform schema.Platform) (username, t
 		return "", "", fmt.Errorf("keyring not available")
 	}
 
-	// Try DNS provider name first
 	cred, err := p.Keyring.GetForURL(platform.DNS.Provider)
 	if err != nil {
-		// If DNS provider matches metal provider, credentials are shared
 		if platform.DNS.Provider == platform.Infrastructure.MetalProvider {
 			cred, err = p.Keyring.GetForURL(platform.Infrastructure.MetalProvider)
 			if err != nil {
@@ -461,9 +423,94 @@ func (p *Provision) resolveDNSCredentials(platform schema.Platform) (username, t
 	return cred.Username, cred.Password, nil
 }
 
+// hostnameIndexRe matches the trailing numeric index from hostnames like "myenv-control-001"
+var hostnameIndexRe = regexp.MustCompile(`-(\d+)$`)
+
+// scanExistingNodes reads node YAML files from nodesDir and builds ExistingNode
+// entries for nodes that have a provider_metadata.server_id. This enables TF
+// import blocks to adopt existing resources without persistent state.
+func (p *Provision) scanExistingNodes(nodesDir string, pools []node.PoolSpec) []provisioner.ExistingNode {
+	entries, err := os.ReadDir(nodesDir)
+	if err != nil {
+		return nil
+	}
+
+	// Build pool name lookup from hostname prefix pattern: <envName>-<pool>-NNN
+	poolNames := make(map[string]bool)
+	for _, pool := range pools {
+		poolNames[pool.Name] = true
+	}
+
+	var existing []provisioner.ExistingNode
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") || entry.Name() == ".gitkeep" {
+			continue
+		}
+
+		n, err := node.Load(filepath.Join(nodesDir, entry.Name()))
+		if err != nil {
+			p.Log().Debug("Skipping unreadable node file", "file", entry.Name(), "error", err)
+			continue
+		}
+
+		// Only import nodes that have a provider server ID
+		if n.ProviderMetadata.ServerID == "" {
+			continue
+		}
+
+		// Derive pool name and index from hostname: <envName>-<pool>-NNN
+		pool, index, ok := parseHostnamePool(n.Hostname, p.Name, poolNames)
+		if !ok {
+			p.Log().Debug("Cannot match node to pool", "hostname", n.Hostname)
+			continue
+		}
+
+		existing = append(existing, provisioner.ExistingNode{
+			Pool:     pool,
+			Index:    index,
+			ImportID: n.ProviderMetadata.ServerID,
+		})
+	}
+
+	return existing
+}
+
+// parseHostnamePool extracts pool name and 0-based index from a hostname.
+// Expected format: <envName>-<poolName>-NNN (e.g., "ski-dev-control-001")
+// Returns pool name, 0-based index, and whether parsing succeeded.
+func parseHostnamePool(hostname, envName string, validPools map[string]bool) (string, int, bool) {
+	prefix := envName + "-"
+	if !strings.HasPrefix(hostname, prefix) {
+		return "", 0, false
+	}
+
+	// Strip env prefix: "control-001"
+	rest := strings.TrimPrefix(hostname, prefix)
+
+	// Extract trailing index
+	match := hostnameIndexRe.FindStringSubmatch(rest)
+	if match == nil {
+		return "", 0, false
+	}
+
+	// Pool name is everything before the index
+	poolName := rest[:len(rest)-len(match[0])]
+	if !validPools[poolName] {
+		return "", 0, false
+	}
+
+	// Parse 1-based index → 0-based
+	idx, err := strconv.Atoi(match[1])
+	if err != nil || idx < 1 {
+		return "", 0, false
+	}
+
+	return poolName, idx - 1, true
+}
+
 // showProvisionImpact loads the platform graph and shows what components
 // will be deployed on the provisioned chassis paths.
-func (p *Provision) showProvisionImpact(specs []node.ChassisSpec) {
+func (p *Provision) showProvisionImpact(pools []node.PoolSpec) {
 	g, err := graph.Load()
 	if err != nil {
 		p.Log().Debug("Platform graph not available for impact display", "error", err)
@@ -473,28 +520,25 @@ func (p *Provision) showProvisionImpact(specs []node.ChassisSpec) {
 	p.Term().Println()
 	p.Term().Info().Println("Deployment impact:")
 
-	seen := make(map[string]bool)
-	for _, spec := range specs {
-		if seen[spec.Chassis] {
-			continue
-		}
-		seen[spec.Chassis] = true
+	for _, pool := range pools {
+		p.Term().Info().Printfln("  Pool %q (%s x%d):", pool.Name, pool.Machine, pool.Count)
+		for _, chassis := range pool.Chassis {
+			gNode := g.Node(chassis)
+			if gNode == nil {
+				p.Term().Warning().Printfln("    %s: not found in platform graph", chassis)
+				continue
+			}
 
-		gNode := g.Node(spec.Chassis)
-		if gNode == nil {
-			p.Term().Warning().Printfln("  %s: not found in platform graph", spec.Chassis)
-			continue
-		}
+			attached := g.EdgesFrom(chassis, "distributes")
+			if len(attached) == 0 {
+				p.Term().Info().Printfln("    %s: no components attached", chassis)
+				continue
+			}
 
-		attached := g.EdgesFrom(spec.Chassis, "attaches")
-		if len(attached) == 0 {
-			p.Term().Info().Printfln("  %s: no components attached", spec.Chassis)
-			continue
-		}
-
-		p.Term().Info().Printfln("  %s:", spec.Chassis)
-		for _, e := range attached {
-			p.Term().Printfln("    %s (%s)", e.To().Name, e.To().Kind)
+			p.Term().Info().Printfln("    %s:", chassis)
+			for _, e := range attached {
+				p.Term().Printfln("      %s (%s)", e.To().Name, e.To().Kind)
+			}
 		}
 	}
 }

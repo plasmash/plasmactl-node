@@ -1,4 +1,4 @@
-package terraform
+package provisioner
 
 import (
 	"bytes"
@@ -6,24 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
 
 	"github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/plasmash/plasmactl-node/pkg/node"
+	pkgtofu "github.com/plasmash/plasmactl-platform/pkg/tofu"
 )
 
-// TerraformManager handles Terraform/OpenTofu operations
-type TerraformManager struct {
+// Manager handles infrastructure provisioning via OpenTofu.
+type Manager struct {
 	workDir     string
 	tf          *tfexec.Terraform
 	dryRun      bool
 	autoApprove bool
 }
 
-// ServerOutput represents a provisioned server from Terraform
+// ServerOutput represents a provisioned server from OpenTofu output.
 type ServerOutput struct {
 	Hostname   string `json:"hostname"`
 	PublicIP   string `json:"public_ip"`
@@ -33,22 +33,32 @@ type ServerOutput struct {
 	ServerID   string `json:"server_id"`
 	Zone       string `json:"zone"`
 	Region     string `json:"region"`
-	OfferName  string `json:"offer_name"`
-	Chassis    string `json:"chassis"`
+	Machine    string `json:"machine"`
+	Pool       string `json:"pool"`
 	Provider   string `json:"provider"`
+}
+
+// ExistingNode represents a previously provisioned node for TF import.
+// Derived from node YAML files — enables stateless provisioning where
+// node files are the single source of truth.
+type ExistingNode struct {
+	Pool     string // pool name (matched from hostname)
+	Index    int    // 0-based index within pool (derived from hostname suffix)
+	ImportID string // provider-specific import ID (provider_metadata.server_id)
 }
 
 // ProviderConfig holds provider-agnostic configuration for HCL generation
 type ProviderConfig struct {
-	EnvName   string
-	Specs     []node.ChassisSpec
-	Provider  string
-	APIToken  string
-	Zone      string
-	Region    string
-	ProjectID string
-	Image     string
-	SSHKeyID  string
+	EnvName       string
+	Pools         []node.PoolSpec
+	Provider      string
+	APIToken      string
+	Zone          string
+	Region        string
+	ProjectID     string
+	Image         string
+	SSHKeyID      string
+	ExistingNodes []ExistingNode
 }
 
 // providerTemplates maps provider names to their HCL templates
@@ -59,27 +69,27 @@ func RegisterTemplate(provider, tmpl string) {
 	providerTemplates[provider] = tmpl
 }
 
-// NewTerraformManager creates a new Terraform manager
-func NewTerraformManager(envDir string, dryRun, autoApprove bool) (*TerraformManager, error) {
-	workDir := filepath.Join(envDir, ".terraform")
+// NewManager creates a new provisioner manager.
+// Working directory is .plasma/node/provision/<envName>/.
+// All generated files (HCL, state, provider cache) are ephemeral.
+func NewManager(envName string, dryRun, autoApprove bool) (*Manager, error) {
+	workDir := filepath.Join(".plasma", "node", "provision", envName)
 
-	// Create working directory
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create terraform directory: %w", err)
+		return nil, fmt.Errorf("failed to create provision directory: %w", err)
 	}
 
-	// Find tofu or terraform binary
-	execPath, err := findTerraformBinary()
+	execPath, err := pkgtofu.FindBinary()
 	if err != nil {
 		return nil, err
 	}
 
 	tf, err := tfexec.NewTerraform(workDir, execPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create terraform instance: %w", err)
+		return nil, fmt.Errorf("failed to create tofu instance: %w", err)
 	}
 
-	return &TerraformManager{
+	return &Manager{
 		workDir:     workDir,
 		tf:          tf,
 		dryRun:      dryRun,
@@ -87,25 +97,25 @@ func NewTerraformManager(envDir string, dryRun, autoApprove bool) (*TerraformMan
 	}, nil
 }
 
-// findTerraformBinary finds tofu or terraform in PATH
-func findTerraformBinary() (string, error) {
-	// Prefer OpenTofu
-	for _, name := range []string{"tofu", "terraform"} {
-		path, err := exec.LookPath(name)
-		if err == nil {
-			return path, nil
+// CleanState removes any existing state so that import blocks
+// in the generated HCL become the sole source of truth for existing resources.
+func (m *Manager) CleanState() error {
+	for _, name := range []string{"terraform.tfstate", "terraform.tfstate.backup"} {
+		path := filepath.Join(m.workDir, name)
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove %s: %w", name, err)
 		}
 	}
-	return "", fmt.Errorf("neither tofu nor terraform found in PATH")
+	return nil
 }
 
-// GenerateHCL generates Terraform HCL for the configured provider
-func (m *TerraformManager) GenerateHCL(config ProviderConfig) error {
+// GenerateHCL generates HCL for the configured provider
+func (m *Manager) GenerateHCL(config ProviderConfig) error {
 	mainFile := filepath.Join(m.workDir, "main.tf")
 
 	tmplStr, ok := providerTemplates[config.Provider]
 	if !ok {
-		return fmt.Errorf("no terraform template registered for provider %q", config.Provider)
+		return fmt.Errorf("no HCL template registered for provider %q", config.Provider)
 	}
 
 	funcMap := template.FuncMap{
@@ -148,35 +158,31 @@ func (m *TerraformManager) GenerateHCL(config ProviderConfig) error {
 	return nil
 }
 
-// Init initializes Terraform
-func (m *TerraformManager) Init(ctx context.Context) error {
+// Init initializes OpenTofu
+func (m *Manager) Init(ctx context.Context) error {
 	return m.tf.Init(ctx, tfexec.Upgrade(true))
 }
 
-// Plan runs terraform plan
-func (m *TerraformManager) Plan(ctx context.Context) (bool, error) {
+// Plan runs tofu plan
+func (m *Manager) Plan(ctx context.Context) (bool, error) {
 	return m.tf.Plan(ctx)
 }
 
-// Apply runs terraform apply
-func (m *TerraformManager) Apply(ctx context.Context) error {
-	var opts []tfexec.ApplyOption
-	if m.autoApprove {
-		// terraform-exec always uses -auto-approve
-	}
-	return m.tf.Apply(ctx, opts...)
+// Apply runs tofu apply
+func (m *Manager) Apply(ctx context.Context) error {
+	return m.tf.Apply(ctx)
 }
 
-// Destroy runs terraform destroy
-func (m *TerraformManager) Destroy(ctx context.Context) error {
+// Destroy runs tofu destroy
+func (m *Manager) Destroy(ctx context.Context) error {
 	return m.tf.Destroy(ctx)
 }
 
-// GetOutputs retrieves Terraform outputs
-func (m *TerraformManager) GetOutputs(ctx context.Context) ([]ServerOutput, error) {
+// GetOutputs retrieves provisioning outputs
+func (m *Manager) GetOutputs(ctx context.Context) ([]ServerOutput, error) {
 	outputs, err := m.tf.Output(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get terraform outputs: %w", err)
+		return nil, fmt.Errorf("failed to get outputs: %w", err)
 	}
 
 	serversOutput, ok := outputs["servers"]
@@ -197,8 +203,7 @@ func (m *TerraformManager) GetOutputs(ctx context.Context) ([]ServerOutput, erro
 	return result, nil
 }
 
-// GetWorkDir returns the Terraform working directory
-func (m *TerraformManager) GetWorkDir() string {
+// GetWorkDir returns the provisioning working directory
+func (m *Manager) GetWorkDir() string {
 	return m.workDir
 }
-

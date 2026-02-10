@@ -16,7 +16,7 @@ type Node struct {
 	Hostname string   `yaml:"hostname"`
 	Platform string   `yaml:"-"` // Platform name (derived from directory structure)
 	Chassis  []string `yaml:"chassis"` // Direct chassis allocations
-	Profile  string   `yaml:"profile,omitempty"`
+	Machine  string   `yaml:"machine,omitempty"`
 
 	Network          Network          `yaml:"network"`
 	Disks            []string         `yaml:"disks,omitempty"`
@@ -60,15 +60,16 @@ type ProviderMetadata struct {
 	Zone       string `yaml:"zone,omitempty"`
 	Region     string `yaml:"region,omitempty"`
 	OfferID    string `yaml:"offer_id,omitempty"`
-	OfferName  string `yaml:"offer_name,omitempty"`
+	Machine    string `yaml:"machine,omitempty"`
 }
 
-// ChassisSpec represents a parsed chassis specification for provisioning.
-// Used to parse CLI input like "foundation.cluster.control:Start-1-S:3"
-type ChassisSpec struct {
-	Chassis   string
-	OfferType string
-	Count     int
+// PoolSpec represents a pool specification for provisioning.
+// Used to parse CLI input like "control:platform.foundation.cluster.control:GP1-M:3"
+type PoolSpec struct {
+	Name    string   // pool name (used for resource naming and hostnames)
+	Chassis []string // chassis sections co-located on these nodes
+	Machine string   // hardware identifier (provider-specific)
+	Count   int      // number of nodes
 }
 
 // NewNode creates a new Node with the given configuration
