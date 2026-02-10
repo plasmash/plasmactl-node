@@ -9,7 +9,6 @@ action:
       required: true
   options:
     - name: hostname
-      shorthand: h
       title: Hostname
       description: The hostname for the node
       type: string
