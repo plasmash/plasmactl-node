@@ -29,3 +29,20 @@ action:
       description: "Chassis assignments for the node (can be specified multiple times)"
       type: array
       default: []
+  result:
+    type: object
+    properties:
+      hostname:
+        type: string
+      platform:
+        type: string
+      public_ip:
+        type: string
+      private_ip:
+        type: string
+      chassis:
+        type: array
+        items:
+          type: string
+      file:
+        type: string

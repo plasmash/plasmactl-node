@@ -19,3 +19,38 @@ action:
       description: Validate chassis paths against chassis tree
       type: boolean
       default: false
+  result:
+    type: object
+    properties:
+      nodes:
+        type: array
+        items:
+          type: object
+          properties:
+            hostname:
+              type: string
+            platform:
+              type: string
+            valid:
+              type: boolean
+            checks:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  status:
+                    type: string
+                  value:
+                    type: string
+            has_errors:
+              type: boolean
+      total_nodes:
+        type: integer
+      valid_nodes:
+        type: integer
+      has_errors:
+        type: boolean
+      has_warnings:
+        type: boolean

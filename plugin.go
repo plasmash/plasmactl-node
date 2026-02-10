@@ -52,7 +52,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// node:add - Add a node to a platform (manual registration)
 	addYaml, _ := actionYamlFS.ReadFile("actions/add/add.yaml")
 	addAct := action.NewFromYAML("node:add", addYaml)
-	addAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	addAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		add := &add.Add{
@@ -64,13 +64,14 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		add.SetLogger(log)
 		add.SetTerm(term)
-		return add.Execute()
+		err := add.Execute()
+		return add.Result(), err
 	}))
 
 	// node:provision - Provision infrastructure
 	provisionYaml, _ := actionYamlFS.ReadFile("actions/provision/provision.yaml")
 	provisionAct := action.NewFromYAML("node:provision", provisionYaml)
-	provisionAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	provisionAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		provision := &provision.Provision{
@@ -81,7 +82,8 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		provision.SetLogger(log)
 		provision.SetTerm(term)
-		return provision.Execute()
+		err := provision.Execute()
+		return provision.Result(), err
 	}))
 
 	// node:list - List platforms and their nodes
@@ -117,7 +119,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// node:destroy - Destroy infrastructure
 	destroyYaml, _ := actionYamlFS.ReadFile("actions/destroy/destroy.yaml")
 	destroyAct := action.NewFromYAML("node:destroy", destroyYaml)
-	destroyAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	destroyAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		destroy := &destroy.Destroy{
@@ -128,13 +130,14 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		destroy.SetLogger(log)
 		destroy.SetTerm(term)
-		return destroy.Execute()
+		err := destroy.Execute()
+		return destroy.Result(), err
 	}))
 
 	// node:register - Manually register a node
 	registerYaml, _ := actionYamlFS.ReadFile("actions/register/register.yaml")
 	registerAct := action.NewFromYAML("node:register", registerYaml)
-	registerAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	registerAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		register := &register.Register{
@@ -146,13 +149,14 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		register.SetLogger(log)
 		register.SetTerm(term)
-		return register.Execute()
+		err := register.Execute()
+		return register.Result(), err
 	}))
 
 	// node:allocate - Allocate node to chassis paths (kubectl-style)
 	allocateYaml, _ := actionYamlFS.ReadFile("actions/allocate/allocate.yaml")
 	allocateAct := action.NewFromYAML("node:allocate", allocateYaml)
-	allocateAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	allocateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		allocate := &allocate.Allocate{
@@ -162,7 +166,8 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 		allocate.SetLogger(log)
 		allocate.SetTerm(term)
-		return allocate.Execute()
+		err := allocate.Execute()
+		return allocate.Result(), err
 	}))
 
 	// node:query - Query nodes by chassis path, component, or package

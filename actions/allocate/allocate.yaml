@@ -19,3 +19,14 @@ action:
       description: Environment name (looks in inst/<env>/nodes/)
       type: string
       default: ""
+  result:
+    type: object
+    properties:
+      hostname:
+        type: string
+      chassis:
+        type: array
+        items:
+          type: string
+      modified:
+        type: boolean

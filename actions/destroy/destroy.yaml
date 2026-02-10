@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Destroy Nodes
-  description: "Destroy node infrastructure for a platform via Terraform"
+  description: "Destroy node infrastructure for a platform via OpenTofu"
   arguments:
     - name: name
       title: Name
@@ -19,3 +19,14 @@ action:
       description: Keep node files after destroying infrastructure
       type: boolean
       default: false
+  result:
+    type: object
+    properties:
+      name:
+        type: string
+      nodes_removed:
+        type: array
+        items:
+          type: string
+      success:
+        type: boolean
