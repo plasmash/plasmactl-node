@@ -8,7 +8,7 @@ import (
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/internal/terraform"
+	"github.com/plasmash/plasmactl-node/internal/provisioner"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -40,10 +40,11 @@ func (d *Destroy) Result() any {
 
 // Execute runs the node:destroy action
 func (d *Destroy) Execute() error {
+	d.result = &DestroyResult{Name: d.Name}
+
 	envDir := filepath.Join("inst", d.Name)
 	platformFile := filepath.Join(envDir, "platform.yaml")
 	nodesDir := filepath.Join(envDir, "nodes")
-	terraformDir := filepath.Join(envDir, ".terraform")
 
 	// Check if environment exists
 	if _, err := os.Stat(envDir); os.IsNotExist(err) {
@@ -68,12 +69,6 @@ func (d *Destroy) Execute() error {
 		return nil
 	}
 
-	// Check if terraform state exists
-	if _, err := os.Stat(filepath.Join(terraformDir, "terraform.tfstate")); os.IsNotExist(err) {
-		d.Term().Warning().Println("No Terraform state found - nothing to destroy")
-		return nil
-	}
-
 	// Confirm destruction
 	if !d.Force {
 		d.Term().Warning().Printfln("This will DESTROY all infrastructure for environment %q", d.Name)
@@ -87,31 +82,26 @@ func (d *Destroy) Execute() error {
 
 	ctx := context.Background()
 
-	// Create Terraform manager
-	tfManager, err := terraform.NewTerraformManager(envDir, false, true)
+	// Create provisioner manager
+	mgr, err := provisioner.NewManager(d.Name, false, true)
 	if err != nil {
-		return fmt.Errorf("failed to create terraform manager: %w", err)
+		return fmt.Errorf("failed to create provisioner: %w", err)
 	}
 
-	// Initialize Terraform (in case state is missing)
-	d.Term().Info().Println("Initializing Terraform...")
-	if err := tfManager.Init(ctx); err != nil {
-		return fmt.Errorf("terraform init failed: %w", err)
+	// Initialize
+	d.Term().Info().Println("Initializing provisioner...")
+	if err := mgr.Init(ctx); err != nil {
+		return fmt.Errorf("provisioner init failed: %w", err)
 	}
 
 	// Destroy
 	d.Term().Info().Println("Destroying infrastructure...")
-	if err := tfManager.Destroy(ctx); err != nil {
-		return fmt.Errorf("terraform destroy failed: %w", err)
+	if err := mgr.Destroy(ctx); err != nil {
+		return fmt.Errorf("provisioner destroy failed: %w", err)
 	}
 
 	d.Term().Success().Println("Infrastructure destroyed")
-
-	// Initialize result
-	d.result = &DestroyResult{
-		Name:    d.Name,
-		Success: true,
-	}
+	d.result.Success = true
 
 	// Remove node files unless --keep-nodes
 	if !d.KeepNodes {
@@ -133,13 +123,6 @@ func (d *Destroy) Execute() error {
 		d.Term().Info().Println("Node files removed")
 	} else {
 		d.Term().Info().Println("Node files kept (--keep-nodes)")
-	}
-
-	// Clean up terraform directory
-	if err := os.RemoveAll(terraformDir); err != nil {
-		d.Log().Warn("Failed to remove terraform directory", "error", err)
-	} else {
-		d.Term().Info().Println("Terraform state cleaned up")
 	}
 
 	return nil
