@@ -76,7 +76,6 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		provision := &provision.Provision{
 			Keyring:     p.k,
 			Name:        input.Arg("name").(string),
-			ChassisSpec: action.InputOptSlice[string](input, "chassis"),
 			DryRun:      input.Opt("dry-run").(bool),
 			AutoApprove: input.Opt("auto-approve").(bool),
 		}
@@ -88,29 +87,31 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// node:list - List platforms and their nodes
 	listYaml, _ := actionYamlFS.ReadFile("actions/list/list.yaml")
 	listAct := action.NewFromYAML("node:list", listYaml)
-	listAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	listAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
-		list := &list.List{
+		l := &list.List{
 			Tree: input.Opt("tree").(bool),
 		}
-		list.SetLogger(log)
-		list.SetTerm(term)
-		return list.Execute()
+		l.SetLogger(log)
+		l.SetTerm(term)
+		err := l.Execute()
+		return l.Result(), err
 	}))
 
 	// node:show - Show platform/node details
 	showYaml, _ := actionYamlFS.ReadFile("actions/show/show.yaml")
 	showAct := action.NewFromYAML("node:show", showYaml)
-	showAct.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+	showAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
-		show := &show.Show{
+		s := &show.Show{
 			Name: input.Arg("name").(string),
 		}
-		show.SetLogger(log)
-		show.SetTerm(term)
-		return show.Execute()
+		s.SetLogger(log)
+		s.SetTerm(term)
+		err := s.Execute()
+		return s.Result(), err
 	}))
 
 	// node:destroy - Destroy infrastructure

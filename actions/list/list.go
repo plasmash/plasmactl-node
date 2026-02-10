@@ -76,7 +76,7 @@ func (l *List) Execute() error {
 
 	// Flat output - one per line, scriptable
 	for _, n := range allNodes {
-		fmt.Println(n.DisplayName())
+		l.Term().Printfln("%s", n.DisplayName())
 	}
 
 	return nil
@@ -115,7 +115,7 @@ func (l *List) printTreeWithRelations() error {
 		allocations := nodes.Allocations(c)
 
 		// Print platform header
-		fmt.Println(platform)
+		l.Term().Printfln("%s", platform)
 
 		// Sort nodes by hostname
 		sort.Slice(nodes, func(i, j int) bool {
@@ -137,7 +137,7 @@ func (l *List) printTreeWithRelations() error {
 				nodeIndent = "│   "
 			}
 
-			fmt.Printf("%s🖥  %s\n", nodePrefix, n.DisplayName())
+			l.Term().Printfln("%s🖥  %s", nodePrefix, n.DisplayName())
 
 			// Get chassis paths for this node
 			chassisPaths := allocations[n.Hostname]
@@ -171,7 +171,7 @@ func (l *List) printTreeWithRelations() error {
 				} else {
 					childPrefix = nodeIndent + "├── "
 				}
-				fmt.Printf("%s📍 %s\n", childPrefix, chassisPath)
+				l.Term().Printfln("%s📍 %s", childPrefix, chassisPath)
 			}
 
 			// Print components
@@ -184,12 +184,12 @@ func (l *List) printTreeWithRelations() error {
 				} else {
 					childPrefix = nodeIndent + "├── "
 				}
-				fmt.Printf("%s🧩 %s\n", childPrefix, comp)
+				l.Term().Printfln("%s🧩 %s", childPrefix, comp)
 			}
 		}
 
 		if pi < len(platforms)-1 {
-			fmt.Println()
+			l.Term().Println()
 		}
 	}
 

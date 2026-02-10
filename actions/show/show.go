@@ -107,37 +107,37 @@ func (s *Show) showNode(platform string, node node.Node) error {
 
 	// Print human-readable output
 	n := s.result.Node
-	fmt.Printf("node\t%s\n", n.Node)
-	fmt.Printf("platform\t%s\n", n.Platform)
+	s.Term().Printfln("node\t%s", n.Node)
+	s.Term().Printfln("platform\t%s", n.Platform)
 
 	if len(n.Chassis) > 0 {
-		fmt.Println()
+		s.Term().Println()
 		s.Term().Info().Printfln("Chassis (%d)", len(n.Chassis))
 		for _, ch := range n.Chassis {
-			fmt.Println(ch)
+			s.Term().Printfln("%s", ch)
 		}
 	}
 
-	fmt.Println()
+	s.Term().Println()
 	s.Term().Info().Println("Network")
 	if n.Network.PublicIP != "" {
-		fmt.Printf("public_ip\t%s\n", n.Network.PublicIP)
+		s.Term().Printfln("public_ip\t%s", n.Network.PublicIP)
 	}
 	if n.Network.PrivateIP != "" {
-		fmt.Printf("private_ip\t%s\n", n.Network.PrivateIP)
+		s.Term().Printfln("private_ip\t%s", n.Network.PrivateIP)
 	}
 	if n.Network.FailoverIP != "" {
-		fmt.Printf("failover_ip\t%s\n", n.Network.FailoverIP)
+		s.Term().Printfln("failover_ip\t%s", n.Network.FailoverIP)
 	}
 
 	if n.Provider.ServerID != "" || n.Provider.Zone != "" {
-		fmt.Println()
+		s.Term().Println()
 		s.Term().Info().Println("Provider")
 		if n.Provider.ServerID != "" {
-			fmt.Printf("server_id\t%s\n", n.Provider.ServerID)
+			s.Term().Printfln("server_id\t%s", n.Provider.ServerID)
 		}
 		if n.Provider.Zone != "" {
-			fmt.Printf("zone\t%s\n", n.Provider.Zone)
+			s.Term().Printfln("zone\t%s", n.Provider.Zone)
 		}
 	}
 
