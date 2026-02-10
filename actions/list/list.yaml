@@ -18,7 +18,7 @@ action:
         items:
           type: object
           properties:
-            hostname:
+            node:
               type: string
               description: Node hostname
             platform:

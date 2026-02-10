@@ -83,8 +83,7 @@ func (s *Show) Execute() error {
 		}
 	}
 
-	s.Term().Error().Printfln("Node %q not found in any platform", s.Name)
-	return nil
+	return fmt.Errorf("node %q not found in any platform", s.Name)
 }
 
 // showNode displays details for a single node

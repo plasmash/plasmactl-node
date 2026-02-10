@@ -14,11 +14,6 @@ action:
       description: Environment name (looks in inst/<env>/nodes/)
       type: string
       default: ""
-    - name: check-chassis
-      title: Check Chassis
-      description: Validate chassis paths against chassis tree
-      type: boolean
-      default: false
   result:
     type: object
     properties:

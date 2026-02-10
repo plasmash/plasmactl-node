@@ -41,9 +41,8 @@ type Validate struct {
 	action.WithLogger
 	action.WithTerm
 
-	Identifier   string
-	Env          string
-	CheckChassis bool
+	Identifier string
+	Env        string
 
 	graph  *graph.PlatformGraph
 	result *ValidateResult
@@ -151,6 +150,12 @@ func (v *Validate) validatePlatformNodes(platform string) error {
 		if validation.HasErrors {
 			v.result.HasErrors = true
 		}
+		for _, check := range validation.Checks {
+			if check.Status == "warning" {
+				v.result.HasWarnings = true
+				break
+			}
+		}
 	}
 
 	return nil
@@ -180,6 +185,12 @@ func (v *Validate) validateSingleNode(hostname string) error {
 		v.result.ValidNodes = 1
 	}
 	v.result.HasErrors = validation.HasErrors
+	for _, check := range validation.Checks {
+		if check.Status == "warning" {
+			v.result.HasWarnings = true
+			break
+		}
+	}
 
 	return v.printSummary()
 }

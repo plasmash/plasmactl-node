@@ -194,9 +194,8 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		input := a.Input()
 		log, term := getLogger(a)
 		v := &validate.Validate{
-			Identifier:   input.Arg("identifier").(string),
-			Env:          input.Opt("env").(string),
-			CheckChassis: input.Opt("check-chassis").(bool),
+			Identifier: input.Arg("identifier").(string),
+			Env:        input.Opt("env").(string),
 		}
 		v.SetLogger(log)
 		v.SetTerm(term)

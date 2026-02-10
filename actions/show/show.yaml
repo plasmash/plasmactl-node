@@ -14,7 +14,7 @@ action:
         type: object
         description: Node details
         properties:
-          hostname:
+          node:
             type: string
             description: Node hostname
           platform:
@@ -31,6 +31,8 @@ action:
               public_ip:
                 type: string
               private_ip:
+                type: string
+              failover_ip:
                 type: string
           provider:
             type: object
