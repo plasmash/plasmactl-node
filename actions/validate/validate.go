@@ -311,7 +311,7 @@ func (v *Validate) validateNode(n node.Node, nodesDir string, publicIPs, private
 					hasErrors = true
 				} else {
 					// Show what's attached to this chassis
-					attached := v.graph.EdgesFrom(chassisPath, "attaches")
+					attached := v.graph.EdgesFrom(chassisPath, "distributes")
 					if len(attached) > 0 {
 						names := make([]string, len(attached))
 						for i, e := range attached {

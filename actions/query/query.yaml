@@ -19,7 +19,7 @@ action:
       title: Kind
       description: Identifier kind to skip auto-detection (chassis, component)
       type: string
-      enum: [chassis, component]
+      enum: ["", chassis, component]
       default: ""
   result:
     type: object

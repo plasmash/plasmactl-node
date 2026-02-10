@@ -93,8 +93,8 @@ func (q *Query) Execute() error {
 	if searchComponent && len(matchingNodes) == 0 {
 		gNode := g.Node(q.Identifier)
 		if gNode != nil && gNode.Kind != "chassis" && gNode.Kind != "node" {
-			// Find chassis that attaches this component (reverse: chassis --attaches--> component)
-			ancestors := g.Ancestors(q.Identifier, 1, "attaches")
+			// Find chassis that distributes this component (reverse: chassis --distributes--> component)
+			ancestors := g.Ancestors(q.Identifier, 1, "distributes")
 			chassisPaths := make(map[string]bool)
 			for _, a := range ancestors {
 				if a.Kind == "chassis" {

@@ -175,7 +175,7 @@ func (a *Allocate) showAllocations(n *node.Node) error {
 		a.Term().Printfln("  %s", c)
 		// Show attached components from graph
 		if g != nil {
-			attached := g.EdgesFrom(c, "attaches")
+			attached := g.EdgesFrom(c, "distributes")
 			for _, e := range attached {
 				a.Term().Printfln("    → %s (%s)", e.To().Name, e.To().Kind)
 			}
