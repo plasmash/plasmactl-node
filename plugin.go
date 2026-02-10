@@ -193,8 +193,9 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	validateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
+		identifier, _ := input.Arg("identifier").(string)
 		v := &validate.Validate{
-			Identifier: input.Arg("identifier").(string),
+			Identifier: identifier,
 			Env:        input.Opt("env").(string),
 		}
 		v.SetLogger(log)
