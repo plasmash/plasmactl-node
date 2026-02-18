@@ -12,10 +12,10 @@ import (
 
 // NodeListItem represents a node in the list output
 type NodeListItem struct {
-	Node       string   `json:"node"`
-	Platform   string   `json:"platform"`
-	Chassis    []string `json:"chassis,omitempty"`
-	Components []string `json:"components,omitempty"`
+	Node       string   `json:"node"                  yaml:"node"`
+	Platform   string   `json:"platform"              yaml:"platform"`
+	Chassis    []string `json:"chassis,omitempty"     yaml:"chassis,omitempty"`
+	Components []string `json:"components,omitempty"  yaml:"components,omitempty"`
 }
 
 // ListResult is the structured output for node:list
