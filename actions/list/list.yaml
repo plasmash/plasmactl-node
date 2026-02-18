@@ -24,3 +24,13 @@ action:
             platform:
               type: string
               description: Platform instance
+            chassis:
+              type: array
+              description: Chassis paths allocated to this node (tree mode only)
+              items:
+                type: string
+            components:
+              type: array
+              description: Components running on this node (tree mode only)
+              items:
+                type: string

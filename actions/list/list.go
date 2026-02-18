@@ -12,8 +12,10 @@ import (
 
 // NodeListItem represents a node in the list output
 type NodeListItem struct {
-	Node     string `json:"node"`
-	Platform string `json:"platform"`
+	Node       string   `json:"node"`
+	Platform   string   `json:"platform"`
+	Chassis    []string `json:"chassis,omitempty"`
+	Components []string `json:"components,omitempty"`
 }
 
 // ListResult is the structured output for node:list
@@ -38,7 +40,7 @@ func (l *List) Result() any {
 
 // Execute runs the node:list action
 func (l *List) Execute() error {
-	l.result = &ListResult{}
+	l.result = &ListResult{Nodes: []NodeListItem{}}
 
 	// Load nodes by platform
 	nodesByPlatform, err := node.LoadByPlatform(".")
@@ -50,7 +52,6 @@ func (l *List) Execute() error {
 		l.Term().Warning().Println("No nodes found")
 		return nil
 	}
-	var allNodes []node.Node
 
 	// Sort platforms for consistent ordering
 	var platforms []string
@@ -59,76 +60,95 @@ func (l *List) Execute() error {
 	}
 	sort.Strings(platforms)
 
+	// Load chassis and components once (only needed for tree mode)
+	var c *chassis.Chassis
+	chassisToComponents := make(map[string][]string)
+	if l.Tree {
+		c, err = chassis.Load(".")
+		if err != nil {
+			l.Log().Debug("Failed to load chassis", "error", err)
+		}
+		components, _ := component.LoadFromPlaybooks(".")
+		for _, comp := range components {
+			chassisToComponents[comp.Chassis] = append(chassisToComponents[comp.Chassis], comp.Name)
+		}
+	}
+
 	for _, platform := range platforms {
-		for _, n := range nodesByPlatform[platform] {
-			l.result.Nodes = append(l.result.Nodes, NodeListItem{
+		nodes := nodesByPlatform[platform]
+		sort.Slice(nodes, func(i, j int) bool {
+			return nodes[i].Hostname < nodes[j].Hostname
+		})
+
+		var allocations map[string][]string
+		if l.Tree && c != nil {
+			allocations = nodes.Allocations(c)
+		}
+
+		for _, n := range nodes {
+			item := NodeListItem{
 				Node:     n.Hostname,
 				Platform: n.Platform,
-			})
-			allNodes = append(allNodes, n)
+			}
+
+			if l.Tree {
+				chassisPaths := allocations[n.Hostname]
+				sort.Strings(chassisPaths)
+				if len(chassisPaths) > 0 {
+					item.Chassis = chassisPaths
+				}
+
+				// Collect components across all chassis paths for this node
+				var nodeComps []string
+				seen := make(map[string]bool)
+				for _, p := range chassisPaths {
+					for _, comp := range chassisToComponents[p] {
+						if !seen[comp] {
+							seen[comp] = true
+							nodeComps = append(nodeComps, comp)
+						}
+					}
+				}
+				sort.Strings(nodeComps)
+				if len(nodeComps) > 0 {
+					item.Components = nodeComps
+				}
+			}
+
+			l.result.Nodes = append(l.result.Nodes, item)
 		}
 	}
 
 	if l.Tree {
-		return l.printTreeWithRelations()
+		return l.printTree(platforms, nodesByPlatform)
 	}
 
 	// Flat output - one per line, scriptable
-	for _, n := range allNodes {
-		l.Term().Printfln("%s", n.DisplayName())
+	for _, item := range l.result.Nodes {
+		l.Term().Printfln("%s", item.Node)
 	}
 
 	return nil
 }
 
-// printTreeWithRelations prints nodes as a tree with chassis paths (📍) and components (🧩)
-func (l *List) printTreeWithRelations() error {
-	// Load chassis for distribution
-	c, err := chassis.Load(".")
-	if err != nil {
-		l.Log().Debug("Failed to load chassis", "error", err)
-	}
-
-	// Load nodes by platform
-	nodesByPlatform, err := node.LoadByPlatform(".")
-	if err != nil {
-		return fmt.Errorf("failed to load nodes: %w", err)
-	}
-
-	// Load components
-	components, _ := component.LoadFromPlaybooks(".")
-	chassisToComponents := make(map[string][]string)
-	for _, comp := range components {
-		chassisToComponents[comp.Chassis] = append(chassisToComponents[comp.Chassis], comp.Name)
-	}
-
-	// Sort platforms
-	var platforms []string
-	for platform := range nodesByPlatform {
-		platforms = append(platforms, platform)
-	}
-	sort.Strings(platforms)
+// printTree prints nodes as a tree with chassis paths (📍) and components (🧩)
+// It reads enriched data from l.result.Nodes which was populated in Execute.
+func (l *List) printTree(platforms []string, nodesByPlatform map[string]node.Nodes) error {
+	term := l.Term()
+	resultIdx := 0
 
 	for pi, platform := range platforms {
 		nodes := nodesByPlatform[platform]
-		allocations := nodes.Allocations(c)
-
-		// Print platform header
-		l.Term().Printfln("%s", platform)
-
-		// Sort nodes by hostname
 		sort.Slice(nodes, func(i, j int) bool {
 			return nodes[i].Hostname < nodes[j].Hostname
 		})
 
-		for ni, n := range nodes {
-			isLastNode := ni == len(nodes)-1 && pi == len(platforms)-1
+		// Print platform header
+		term.Printfln("%s", platform)
 
+		for ni, n := range nodes {
 			var nodePrefix, nodeIndent string
-			if isLastNode {
-				nodePrefix = "└── "
-				nodeIndent = "    "
-			} else if ni == len(nodes)-1 {
+			if ni == len(nodes)-1 {
 				nodePrefix = "└── "
 				nodeIndent = "    "
 			} else {
@@ -136,27 +156,14 @@ func (l *List) printTreeWithRelations() error {
 				nodeIndent = "│   "
 			}
 
-			l.Term().Printfln("%s🖥  %s", nodePrefix, n.DisplayName())
+			term.Printfln("%s🖥  %s", nodePrefix, n.DisplayName())
 
-			// Get chassis paths for this node
-			chassisPaths := allocations[n.Hostname]
-			sort.Strings(chassisPaths)
+			// Enriched data already computed in Execute
+			item := l.result.Nodes[resultIdx]
+			resultIdx++
 
-			// Get components that run on this node's chassis paths
-			var nodeComponents []string
-			chassisSet := make(map[string]bool)
-			for _, p := range chassisPaths {
-				chassisSet[p] = true
-			}
-			for chassisPath, comps := range chassisToComponents {
-				if chassisSet[chassisPath] {
-					for _, c := range comps {
-						nodeComponents = append(nodeComponents, c)
-					}
-				}
-			}
-			sort.Strings(nodeComponents)
-
+			chassisPaths := item.Chassis
+			nodeComponents := item.Components
 			totalChildren := len(chassisPaths) + len(nodeComponents)
 			childIdx := 0
 
@@ -170,7 +177,7 @@ func (l *List) printTreeWithRelations() error {
 				} else {
 					childPrefix = nodeIndent + "├── "
 				}
-				l.Term().Printfln("%s📍 %s", childPrefix, chassisPath)
+				term.Printfln("%s📍 %s", childPrefix, chassisPath)
 			}
 
 			// Print components
@@ -183,12 +190,12 @@ func (l *List) printTreeWithRelations() error {
 				} else {
 					childPrefix = nodeIndent + "├── "
 				}
-				l.Term().Printfln("%s🧩 %s", childPrefix, comp)
+				term.Printfln("%s🧩 %s", childPrefix, comp)
 			}
 		}
 
 		if pi < len(platforms)-1 {
-			l.Term().Println()
+			term.Println()
 		}
 	}
 
