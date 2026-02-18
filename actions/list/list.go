@@ -125,7 +125,7 @@ func (l *List) Execute() error {
 
 	// Flat output - one per line, scriptable
 	for _, item := range l.result.Nodes {
-		l.Term().Printfln("%s", item.Node)
+		l.Term().Printfln("%s@%s", item.Node, item.Platform)
 	}
 
 	return nil
