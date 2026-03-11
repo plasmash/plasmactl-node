@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/terraform-exec v0.21.0
 	github.com/launchrctl/keyring v0.9.0
 	github.com/launchrctl/launchr v0.22.0
-	github.com/plasmash/plasmactl-chassis v1.0.20
+	github.com/plasmash/plasmactl-topology v1.0.20
 	github.com/plasmash/plasmactl-component v1.2.3
 	github.com/plasmash/plasmactl-platform v1.5.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -132,7 +132,7 @@ replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241007
 
 replace github.com/plasmash/plasmactl-component => ../plasmactl-component
 
-replace github.com/plasmash/plasmactl-chassis => ../plasmactl-chassis
+replace github.com/plasmash/plasmactl-topology => ../plasmactl-chassis
 
 replace github.com/plasmash/plasmactl-platform => ../plasmactl-platform
 
