@@ -16,7 +16,7 @@ import (
 // AllocateResult is the structured output for node:allocate
 type AllocateResult struct {
 	Hostname string   `json:"hostname"`
-	Chassis  []string `json:"chassis"`
+	Zones    []string `json:"zones"`
 	Modified bool     `json:"modified"`
 }
 
@@ -37,11 +37,11 @@ func (a *Allocate) Result() any {
 	return a.result
 }
 
-// ChassisOp represents a parsed chassis operation
-type ChassisOp struct {
-	Type    string // "add", "remove", "replace"
-	Chassis string
-	NewVal  string // only for replace
+// ZoneOp represents a parsed zone operation
+type ZoneOp struct {
+	Type   string // "add", "remove", "replace"
+	Zone   string
+	NewVal string // only for replace
 }
 
 // Execute runs the node:allocate action
@@ -68,13 +68,13 @@ func (a *Allocate) Execute() error {
 		// Build result for show mode
 		a.result = &AllocateResult{
 			Hostname: node.Hostname,
-			Chassis:  node.Chassis,
+			Zones:    node.Zones,
 			Modified: false,
 		}
 		return a.showAllocations(&node)
 	}
 
-	// Load platform graph for chassis validation
+	// Load platform graph for zone validation
 	var g *graph.PlatformGraph
 	if pg, err := graph.Load(); err == nil {
 		g = pg
@@ -85,42 +85,42 @@ func (a *Allocate) Execute() error {
 	modified := false
 
 	for _, op := range ops {
-		// Validate chassis paths against graph for add/replace operations
+		// Validate zones against graph for add/replace operations
 		if g != nil && (op.Type == "add" || op.Type == "replace") {
-			target := op.Chassis
+			target := op.Zone
 			if op.Type == "replace" {
 				target = op.NewVal
 			}
 			if gNode := g.Node(target); gNode == nil {
 				a.Term().Warning().Printfln("Warning: %q not found in platform graph", target)
-			} else if gNode.Kind != "chassis" {
-				a.Term().Warning().Printfln("Warning: %q is a %s, not a chassis", target, gNode.Kind)
+			} else if gNode.Kind != "zone" {
+				a.Term().Warning().Printfln("Warning: %q is a %s, not a zone", target, gNode.Kind)
 			}
 		}
 
 		switch op.Type {
 		case "add":
-			if a.addChassis(&node, op.Chassis) {
-				a.Term().Success().Printfln("Added: %s", op.Chassis)
+			if a.addZone(&node, op.Zone) {
+				a.Term().Success().Printfln("Added: %s", op.Zone)
 				modified = true
 			} else {
-				a.Term().Warning().Printfln("Already allocated: %s", op.Chassis)
+				a.Term().Warning().Printfln("Already allocated: %s", op.Zone)
 			}
 		case "remove":
-			if a.removeChassis(&node, op.Chassis) {
-				a.Term().Success().Printfln("Removed: %s", op.Chassis)
+			if a.removeZone(&node, op.Zone) {
+				a.Term().Success().Printfln("Removed: %s", op.Zone)
 				modified = true
 			} else {
-				a.Term().Warning().Printfln("Not allocated: %s", op.Chassis)
+				a.Term().Warning().Printfln("Not allocated: %s", op.Zone)
 			}
 		case "replace":
-			removed := a.removeChassis(&node, op.Chassis)
-			added := a.addChassis(&node, op.NewVal)
+			removed := a.removeZone(&node, op.Zone)
+			added := a.addZone(&node, op.NewVal)
 			if removed || added {
-				a.Term().Success().Printfln("Replaced: %s → %s", op.Chassis, op.NewVal)
+				a.Term().Success().Printfln("Replaced: %s → %s", op.Zone, op.NewVal)
 				modified = true
 			} else {
-				a.Term().Warning().Printfln("No change: %s → %s", op.Chassis, op.NewVal)
+				a.Term().Warning().Printfln("No change: %s → %s", op.Zone, op.NewVal)
 			}
 		}
 	}
@@ -128,14 +128,14 @@ func (a *Allocate) Execute() error {
 	if !modified {
 		a.result = &AllocateResult{
 			Hostname: node.Hostname,
-			Chassis:  node.Chassis,
+			Zones:    node.Zones,
 			Modified: false,
 		}
 		return nil
 	}
 
-	// Update labels based on chassis
-	node.AddChassisLabels()
+	// Update labels based on zones
+	node.AddZoneLabels()
 
 	// Write back
 	data, err = yaml.Marshal(&node)
@@ -150,22 +150,22 @@ func (a *Allocate) Execute() error {
 	// Build result
 	a.result = &AllocateResult{
 		Hostname: node.Hostname,
-		Chassis:  node.Chassis,
+		Zones:    node.Zones,
 		Modified: modified,
 	}
 
 	return nil
 }
 
-// showAllocations displays current chassis allocations with component info from graph
+// showAllocations displays current zone allocations with component info from graph
 func (a *Allocate) showAllocations(n *node.Node) error {
 	a.Term().Info().Printfln("Node: %s", n.Hostname)
 	a.Term().Println()
 
-	if len(n.Chassis) == 0 {
-		a.Term().Warning().Println("No chassis allocations")
+	if len(n.Zones) == 0 {
+		a.Term().Warning().Println("No zone allocations")
 		a.Term().Println()
-		a.Term().Info().Println("Tip: node:allocate HOSTNAME CHASSIS to add allocations")
+		a.Term().Info().Println("Tip: node:allocate HOSTNAME ZONE to add allocations")
 		return nil
 	}
 
@@ -175,8 +175,8 @@ func (a *Allocate) showAllocations(n *node.Node) error {
 		g = pg
 	}
 
-	a.Term().Info().Println("Chassis allocations:")
-	for _, c := range n.Chassis {
+	a.Term().Info().Println("Zone allocations:")
+	for _, c := range n.Zones {
 		a.Term().Printfln("  %s", c)
 		// Show attached components from graph
 		if g != nil {
@@ -188,36 +188,36 @@ func (a *Allocate) showAllocations(n *node.Node) error {
 	}
 
 	a.Term().Println()
-	a.Term().Info().Println("Tip: CHASSIS (add), CHASSIS- (remove), OLD/NEW (replace)")
+	a.Term().Info().Println("Tip: ZONE (add), ZONE- (remove), OLD/NEW (replace)")
 
 	return nil
 }
 
 // parseOperations parses the kubectl-style operations
-func (a *Allocate) parseOperations() []ChassisOp {
-	var ops []ChassisOp
+func (a *Allocate) parseOperations() []ZoneOp {
+	var ops []ZoneOp
 
 	for _, arg := range a.Operations {
 		switch {
 		case strings.Contains(arg, "/"):
 			// Replace: old/new
 			parts := strings.SplitN(arg, "/", 2)
-			ops = append(ops, ChassisOp{
-				Type:    "replace",
-				Chassis: parts[0],
+			ops = append(ops, ZoneOp{
+				Type: "replace",
+				Zone: parts[0],
 				NewVal:  parts[1],
 			})
 		case strings.HasSuffix(arg, "-"):
-			// Remove: chassis-
-			ops = append(ops, ChassisOp{
-				Type:    "remove",
-				Chassis: strings.TrimSuffix(arg, "-"),
+			// Remove: zone-
+			ops = append(ops, ZoneOp{
+				Type: "remove",
+				Zone: strings.TrimSuffix(arg, "-"),
 			})
 		default:
-			// Add: chassis
-			ops = append(ops, ChassisOp{
-				Type:    "add",
-				Chassis: arg,
+			// Add: zone
+			ops = append(ops, ZoneOp{
+				Type: "add",
+				Zone: arg,
 			})
 		}
 	}
@@ -225,25 +225,25 @@ func (a *Allocate) parseOperations() []ChassisOp {
 	return ops
 }
 
-// addChassis adds a chassis to the node, returns true if added
-func (a *Allocate) addChassis(node *node.Node, chassis string) bool {
+// addZone adds a zone to the node, returns true if added
+func (a *Allocate) addZone(node *node.Node, zone string) bool {
 	// Check if already exists
-	for _, c := range node.Chassis {
-		if c == chassis {
+	for _, z := range node.Zones {
+		if z == zone {
 			return false
 		}
 	}
 
-	node.Chassis = append(node.Chassis, chassis)
-	sort.Strings(node.Chassis)
+	node.Zones = append(node.Zones, zone)
+	sort.Strings(node.Zones)
 	return true
 }
 
-// removeChassis removes a chassis from the node, returns true if removed
-func (a *Allocate) removeChassis(node *node.Node, chassis string) bool {
-	for i, c := range node.Chassis {
-		if c == chassis {
-			node.Chassis = append(node.Chassis[:i], node.Chassis[i+1:]...)
+// removeZone removes a zone from the node, returns true if removed
+func (a *Allocate) removeZone(node *node.Node, zone string) bool {
+	for i, z := range node.Zones {
+		if z == zone {
+			node.Zones = append(node.Zones[:i], node.Zones[i+1:]...)
 			return true
 		}
 	}

@@ -23,10 +23,10 @@ action:
       description: The private IP address of the node (auto-assigned if not provided)
       type: string
       default: ""
-    - name: chassis
-      shorthand: c
-      title: Chassis
-      description: "Chassis assignments for the node (can be specified multiple times)"
+    - name: zone
+      shorthand: z
+      title: Zone
+      description: "Zone assignments for the node (can be specified multiple times)"
       type: array
       default: []
   result:
@@ -40,7 +40,7 @@ action:
         type: string
       private_ip:
         type: string
-      chassis:
+      zones:
         type: array
         items:
           type: string

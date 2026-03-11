@@ -3,7 +3,7 @@ package node
 import (
 	"sort"
 
-	"github.com/plasmash/plasmactl-chassis/pkg/chassis"
+	"github.com/plasmash/plasmactl-topology/pkg/topology"
 )
 
 // Nodes is a collection of Node.
@@ -28,46 +28,46 @@ func (ns Nodes) Hostnames() []string {
 	return names
 }
 
-// Allocations computes effective chassis allocations for all nodes
-// by distributing them over the chassis structure.
+// Allocations computes effective zone allocations for all nodes
+// by distributing them over the topology structure.
 //
 // Distribution rules (matching platform_nodes.py behavior):
-//  1. Nodes are directly allocated to chassis paths via their Chassis field
-//  2. Downward: Nodes propagate from parent to empty child paths
-//     (a path is "empty" if no node is directly allocated to it)
-//  3. Upward: Nodes propagate to all ancestor paths
+//  1. Nodes are directly allocated to zones via their Zones field
+//  2. Downward: Nodes propagate from parent to empty child zones
+//     (a zone is "empty" if no node is directly allocated to it)
+//  3. Upward: Nodes propagate to all ancestor zones
 //
-// Returns: hostname → []chassisPaths (effective allocations, sorted)
-func (ns Nodes) Allocations(c *chassis.Chassis) map[string][]string {
-	if c == nil || len(ns) == 0 {
+// Returns: hostname → []zones (effective allocations, sorted)
+func (ns Nodes) Allocations(t *topology.Topology) map[string][]string {
+	if t == nil || len(ns) == 0 {
 		return nil
 	}
 
 	// Phase 0: Build tree relationships
-	childrenMap := c.ChildrenMap()
-	treeOrder := c.Flatten()
+	childrenMap := t.ChildrenMap()
+	treeOrder := t.Flatten()
 
-	// Phase 1: Initialize allocations and collect directly occupied chassis paths
+	// Phase 1: Initialize allocations and collect directly occupied zones
 	allocs := make(map[string][]string)
 	directlyOccupied := make(map[string]bool)
 
 	for _, node := range ns {
-		allocs[node.Hostname] = append([]string{}, node.Chassis...)
-		for _, chassisPath := range node.Chassis {
-			directlyOccupied[chassisPath] = true
+		allocs[node.Hostname] = append([]string{}, node.Zones...)
+		for _, zonePath := range node.Zones {
+			directlyOccupied[zonePath] = true
 		}
 	}
 
 	// Phase 2: Downward propagation (tree order - parent before children)
-	// For each chassis path in tree order, propagate nodes to empty children
-	for _, chassisPath := range treeOrder {
-		nodesAtChassis := ns.atChassis(chassisPath, allocs)
-		children := childrenMap[chassisPath]
+	// For each zone in tree order, propagate nodes to empty children
+	for _, zonePath := range treeOrder {
+		nodesAtZone := ns.atZone(zonePath, allocs)
+		children := childrenMap[zonePath]
 
 		for _, child := range children {
 			if !directlyOccupied[child] {
 				// Empty child inherits parent's nodes
-				for _, node := range nodesAtChassis {
+				for _, node := range nodesAtZone {
 					allocs[node.Hostname] = appendUnique(allocs[node.Hostname], child)
 				}
 			}
@@ -75,10 +75,10 @@ func (ns Nodes) Allocations(c *chassis.Chassis) map[string][]string {
 	}
 
 	// Phase 3: Upward propagation (add all ancestors)
-	for hostname, chassisPaths := range allocs {
+	for hostname, zonePaths := range allocs {
 		var toAdd []string
-		for _, chassisPath := range chassisPaths {
-			for _, ancestor := range c.Ancestors(chassisPath) {
+		for _, zonePath := range zonePaths {
+			for _, ancestor := range t.Ancestors(zonePath) {
 				toAdd = append(toAdd, ancestor)
 			}
 		}
@@ -87,7 +87,7 @@ func (ns Nodes) Allocations(c *chassis.Chassis) map[string][]string {
 		}
 	}
 
-	// Sort each node's chassis paths for consistent output
+	// Sort each node's zones for consistent output
 	for hostname := range allocs {
 		sort.Strings(allocs[hostname])
 	}
@@ -95,23 +95,23 @@ func (ns Nodes) Allocations(c *chassis.Chassis) map[string][]string {
 	return allocs
 }
 
-// atChassis returns nodes currently allocated to a chassis path.
-func (ns Nodes) atChassis(chassisPath string, allocs map[string][]string) []Node {
+// atZone returns nodes currently allocated to a zone.
+func (ns Nodes) atZone(zonePath string, allocs map[string][]string) []Node {
 	var result []Node
 	for _, n := range ns {
-		if contains(allocs[n.Hostname], chassisPath) {
+		if contains(allocs[n.Hostname], zonePath) {
 			result = append(result, n)
 		}
 	}
 	return result
 }
 
-// ForChassis returns nodes directly allocated to a chassis path or its descendants.
-func (ns Nodes) ForChassis(chassisPath string) Nodes {
+// ForZone returns nodes directly allocated to a zone or its descendants.
+func (ns Nodes) ForZone(zonePath string) Nodes {
 	var result Nodes
 	for _, n := range ns {
-		for _, c := range n.Chassis {
-			if c == chassisPath || chassis.IsDescendantOf(c, chassisPath) {
+		for _, z := range n.Zones {
+			if z == zonePath || topology.IsDescendantOf(z, zonePath) {
 				result = append(result, n)
 				break
 			}

@@ -27,7 +27,7 @@ type Query struct {
 
 	Identifier string
 	Env        string
-	Kind       string // "chassis" or "component" to skip auto-detection
+	Kind       string // "zone" or "component" to skip auto-detection
 
 	result QueryResult
 }
@@ -57,26 +57,26 @@ func (q *Query) Execute() error {
 
 	var matchingNodes []nodeMatchEntry
 
-	searchChassis := q.Kind == "" || q.Kind == "chassis"
+	searchZone := q.Kind == "" || q.Kind == "zone"
 	searchComponent := q.Kind == "" || q.Kind == "component"
 
-	// Try 1: Query by chassis path using graph
-	if searchChassis {
+	// Try 1: Query by zone using graph
+	if searchZone {
 		gNode := g.Node(q.Identifier)
-		if gNode != nil && gNode.Kind == "chassis" {
-			// Find all chassis paths that are this chassis or its descendants
-			chassisPaths := map[string]bool{q.Identifier: true}
+		if gNode != nil && gNode.Kind == "zone" {
+			// Find all zones that are this zone or its descendants
+			zonePaths := map[string]bool{q.Identifier: true}
 			descendants := g.Descendants(q.Identifier, -1, "contains")
 			for _, d := range descendants {
-				if d.Kind == "chassis" {
-					chassisPaths[d.Name] = true
+				if d.Kind == "zone" {
+					zonePaths[d.Name] = true
 				}
 			}
 
 			for platform, nodes := range nodesByPlatform {
 				for _, n := range nodes {
-					for _, c := range n.Chassis {
-						if chassisPaths[c] {
+					for _, z := range n.Zones {
+						if zonePaths[z] {
 							matchingNodes = append(matchingNodes, nodeMatchEntry{
 								n:        n,
 								platform: platform,
@@ -89,31 +89,31 @@ func (q *Query) Execute() error {
 		}
 	}
 
-	// Try 2: Query by component name - find its chassis attachment via graph
+	// Try 2: Query by component name - find its zone attachment via graph
 	if searchComponent && len(matchingNodes) == 0 {
 		gNode := g.Node(q.Identifier)
-		if gNode != nil && gNode.Kind != "chassis" && gNode.Kind != "node" {
-			// Find chassis that distributes this component (reverse: chassis --distributes--> component)
+		if gNode != nil && gNode.Kind != "zone" && gNode.Kind != "node" {
+			// Find zone that distributes this component (reverse: zone --distributes--> component)
 			ancestors := g.Ancestors(q.Identifier, 1, "distributes")
-			chassisPaths := make(map[string]bool)
+			zonePaths := make(map[string]bool)
 			for _, a := range ancestors {
-				if a.Kind == "chassis" {
-					chassisPaths[a.Name] = true
-					// Also include descendant chassis
+				if a.Kind == "zone" {
+					zonePaths[a.Name] = true
+					// Also include descendant zones
 					descendants := g.Descendants(a.Name, -1, "contains")
 					for _, d := range descendants {
-						if d.Kind == "chassis" {
-							chassisPaths[d.Name] = true
+						if d.Kind == "zone" {
+							zonePaths[d.Name] = true
 						}
 					}
 				}
 			}
 
-			if len(chassisPaths) > 0 {
+			if len(zonePaths) > 0 {
 				for platform, nodes := range nodesByPlatform {
 					for _, n := range nodes {
-						for _, c := range n.Chassis {
-							if chassisPaths[c] {
+						for _, z := range n.Zones {
+							if zonePaths[z] {
 								matchingNodes = append(matchingNodes, nodeMatchEntry{
 									n:        n,
 									platform: platform,

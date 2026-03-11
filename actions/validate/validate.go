@@ -57,12 +57,12 @@ func (v *Validate) Result() any {
 func (v *Validate) Execute() error {
 	v.result = &ValidateResult{}
 
-	// Load platform graph for chassis validation
+	// Load platform graph for zone validation
 	if g, err := graph.Load(); err == nil {
 		v.graph = g
 		v.Log().Debug("Platform graph loaded", "nodes", g.NodeCount(), "edges", g.EdgeCount())
 	} else {
-		v.Log().Debug("Platform graph not available, chassis validation will be limited", "error", err)
+		v.Log().Debug("Platform graph not available, zone validation will be limited", "error", err)
 	}
 
 	// Determine what to validate
@@ -286,52 +286,52 @@ func (v *Validate) validateNode(n node.Node, nodesDir string, publicIPs, private
 		privateIPs[n.Network.PrivateIP] = n.Hostname
 	}
 
-	// Check chassis allocations
-	if len(n.Chassis) == 0 {
+	// Check zone allocations
+	if len(n.Zones) == 0 {
 		validation.Checks = append(validation.Checks, ValidationCheck{
-			Name:   "chassis",
+			Name:   "zones",
 			Status: "warning",
 		})
-		v.Term().Warning().Printfln("  ! %s: no chassis allocations", n.DisplayName())
+		v.Term().Warning().Printfln("  ! %s: no zone allocations", n.DisplayName())
 	} else {
 		validation.Checks = append(validation.Checks, ValidationCheck{
-			Name:   "chassis",
+			Name:   "zones",
 			Status: "pass",
-			Value:  fmt.Sprintf("%d allocations", len(n.Chassis)),
+			Value:  fmt.Sprintf("%d allocations", len(n.Zones)),
 		})
 
-		// Validate chassis paths against the platform graph
+		// Validate zones against the platform graph
 		if v.graph != nil {
-			for _, chassisPath := range n.Chassis {
-				gNode := v.graph.Node(chassisPath)
+			for _, zonePath := range n.Zones {
+				gNode := v.graph.Node(zonePath)
 				if gNode == nil {
 					validation.Checks = append(validation.Checks, ValidationCheck{
-						Name:   "chassis_exists",
+						Name:   "zone_exists",
 						Status: "fail",
-						Value:  chassisPath,
+						Value:  zonePath,
 					})
-					v.Term().Error().Printfln("  ✗ %s: chassis %q not found in platform graph", n.DisplayName(), chassisPath)
+					v.Term().Error().Printfln("  ✗ %s: zone %q not found in platform graph", n.DisplayName(), zonePath)
 					hasErrors = true
-				} else if gNode.Kind != "chassis" {
+				} else if gNode.Kind != "zone" {
 					validation.Checks = append(validation.Checks, ValidationCheck{
-						Name:   "chassis_type",
+						Name:   "zone_type",
 						Status: "fail",
-						Value:  fmt.Sprintf("%s is %s, not chassis", chassisPath, gNode.Kind),
+						Value:  fmt.Sprintf("%s is %s, not zone", zonePath, gNode.Kind),
 					})
-					v.Term().Error().Printfln("  ✗ %s: %q is a %s, not a chassis", n.DisplayName(), chassisPath, gNode.Kind)
+					v.Term().Error().Printfln("  ✗ %s: %q is a %s, not a zone", n.DisplayName(), zonePath, gNode.Kind)
 					hasErrors = true
 				} else {
-					// Show what's attached to this chassis
-					attached := v.graph.EdgesFrom(chassisPath, "distributes")
+					// Show what's attached to this zone
+					attached := v.graph.EdgesFrom(zonePath, "distributes")
 					if len(attached) > 0 {
 						names := make([]string, len(attached))
 						for i, e := range attached {
 							names[i] = e.To().Name
 						}
 						validation.Checks = append(validation.Checks, ValidationCheck{
-							Name:   "chassis_components",
+							Name:   "zone_components",
 							Status: "pass",
-							Value:  fmt.Sprintf("%s: %d components attached", chassisPath, len(attached)),
+							Value:  fmt.Sprintf("%s: %d components attached", zonePath, len(attached)),
 						})
 					}
 				}

@@ -6,7 +6,7 @@ action:
     - name: tree
       shorthand: t
       title: Tree
-      description: Show as tree with chassis paths and components
+      description: Show as tree with zones and components
       type: boolean
       default: false
   result:
@@ -24,9 +24,9 @@ action:
             platform:
               type: string
               description: Platform instance
-            chassis:
+            zones:
               type: array
-              description: Chassis paths allocated to this node (tree mode only)
+              description: Zones allocated to this node (tree mode only)
               items:
                 type: string
             components:

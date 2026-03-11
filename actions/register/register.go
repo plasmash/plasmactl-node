@@ -18,7 +18,7 @@ type RegisterResult struct {
 	Platform  string   `json:"platform"`
 	PublicIP  string   `json:"public_ip"`
 	PrivateIP string   `json:"private_ip"`
-	Chassis   []string `json:"chassis,omitempty"`
+	Zones     []string `json:"zones,omitempty"`
 	File      string   `json:"file"`
 }
 
@@ -31,7 +31,7 @@ type Register struct {
 	Hostname  string
 	PublicIP  string
 	PrivateIP string
-	Chassis   []string
+	Zones     []string
 
 	result *RegisterResult
 }
@@ -90,8 +90,8 @@ func (r *Register) Execute() error {
 	}
 
 	// Create node configuration
-	n := node.NewNode(r.Hostname, r.Chassis, r.PublicIP, privateIP)
-	n.AddChassisLabels()
+	n := node.NewNode(r.Hostname, r.Zones, r.PublicIP, privateIP)
+	n.AddZoneLabels()
 
 	data, err := yaml.Marshal(n)
 	if err != nil {
@@ -108,15 +108,15 @@ func (r *Register) Execute() error {
 		Platform:  r.EnvName,
 		PublicIP:  r.PublicIP,
 		PrivateIP: privateIP,
-		Chassis:   r.Chassis,
+		Zones:     r.Zones,
 		File:      nodeFile,
 	}
 
 	r.Term().Success().Printfln("Created node %s", r.Hostname)
 	r.Term().Info().Printfln("  Public IP:  %s", r.PublicIP)
 	r.Term().Info().Printfln("  Private IP: %s", privateIP)
-	if len(r.Chassis) > 0 {
-		r.Term().Info().Printfln("  Chassis:    %v", r.Chassis)
+	if len(r.Zones) > 0 {
+		r.Term().Info().Printfln("  Zones:      %v", r.Zones)
 	}
 	r.Term().Info().Printfln("  File:       %s", nodeFile)
 

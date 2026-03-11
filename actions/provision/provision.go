@@ -108,7 +108,7 @@ func poolsToSpecs(pools map[string]schema.Pool) []node.PoolSpec {
 	for name, pool := range pools {
 		specs = append(specs, node.PoolSpec{
 			Name:    name,
-			Chassis: pool.Chassis,
+			Zones:   pool.Zones,
 			Machine: pool.Machine,
 			Count:   pool.Count,
 		})
@@ -235,7 +235,7 @@ func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, po
 		return fmt.Errorf("failed to get provisioning outputs: %w", err)
 	}
 
-	// Build pool lookup by name for chassis resolution
+	// Build pool lookup by name for zone resolution
 	poolsByName := make(map[string]node.PoolSpec)
 	for _, pool := range pools {
 		poolsByName[pool.Name] = pool
@@ -263,12 +263,12 @@ func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, po
 			}
 		}
 
-		// Resolve chassis list from pool
+		// Resolve zone list from pool
 		pool := poolsByName[server.Pool]
 
 		n := &node.Node{
 			Hostname: server.Hostname,
-			Chassis:  pool.Chassis,
+			Zones:    pool.Zones,
 			Machine:  server.Machine,
 			Network: node.Network{
 				PublicIP:   server.PublicIP,
@@ -283,7 +283,7 @@ func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, po
 				Machine:  server.Machine,
 			},
 		}
-		n.AddChassisLabels()
+		n.AddZoneLabels()
 
 		nodeFile := filepath.Join(nodesDir, server.Hostname+".yaml")
 		data, err := yaml.Marshal(n)
@@ -509,7 +509,7 @@ func parseHostnamePool(hostname, envName string, validPools map[string]bool) (st
 }
 
 // showProvisionImpact loads the platform graph and shows what components
-// will be deployed on the provisioned chassis paths.
+// will be deployed on the provisioned zones.
 func (p *Provision) showProvisionImpact(pools []node.PoolSpec) {
 	g, err := graph.Load()
 	if err != nil {
@@ -522,20 +522,20 @@ func (p *Provision) showProvisionImpact(pools []node.PoolSpec) {
 
 	for _, pool := range pools {
 		p.Term().Info().Printfln("  Pool %q (%s x%d):", pool.Name, pool.Machine, pool.Count)
-		for _, chassis := range pool.Chassis {
-			gNode := g.Node(chassis)
+		for _, zone := range pool.Zones {
+			gNode := g.Node(zone)
 			if gNode == nil {
-				p.Term().Warning().Printfln("    %s: not found in platform graph", chassis)
+				p.Term().Warning().Printfln("    %s: not found in platform graph", zone)
 				continue
 			}
 
-			attached := g.EdgesFrom(chassis, "distributes")
+			attached := g.EdgesFrom(zone, "distributes")
 			if len(attached) == 0 {
-				p.Term().Info().Printfln("    %s: no components attached", chassis)
+				p.Term().Info().Printfln("    %s: no components attached", zone)
 				continue
 			}
 
-			p.Term().Info().Printfln("    %s:", chassis)
+			p.Term().Info().Printfln("    %s:", zone)
 			for _, e := range attached {
 				p.Term().Printfln("      %s (%s)", e.To().Name, e.To().Kind)
 			}

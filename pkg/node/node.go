@@ -1,5 +1,5 @@
 // Package node provides types and operations for managing platform nodes.
-// Nodes are physical or virtual machines that get allocated to chassis paths.
+// Nodes are physical or virtual machines that get allocated to zones.
 package node
 
 import (
@@ -15,7 +15,7 @@ import (
 type Node struct {
 	Hostname string   `yaml:"hostname"`
 	Platform string   `yaml:"-"` // Platform name (derived from directory structure)
-	Chassis  []string `yaml:"chassis"` // Direct chassis allocations
+	Zones    []string `yaml:"zones,omitempty" json:"zones,omitempty"`
 	Machine  string   `yaml:"machine,omitempty"`
 
 	Network          Network          `yaml:"network"`
@@ -67,16 +67,16 @@ type ProviderMetadata struct {
 // Used to parse CLI input like "control:platform.foundation.cluster.control:GP1-M:3"
 type PoolSpec struct {
 	Name    string   // pool name (used for resource naming and hostnames)
-	Chassis []string // chassis sections co-located on these nodes
+	Zones   []string // zones co-located on these nodes
 	Machine string   // hardware identifier (provider-specific)
 	Count   int      // number of nodes
 }
 
 // NewNode creates a new Node with the given configuration
-func NewNode(hostname string, chassis []string, publicIP, privateIP string) *Node {
+func NewNode(hostname string, zones []string, publicIP, privateIP string) *Node {
 	return &Node{
 		Hostname: hostname,
-		Chassis:  chassis,
+		Zones:    zones,
 		Network: Network{
 			PublicIP:  publicIP,
 			PrivateIP: privateIP,
@@ -86,13 +86,13 @@ func NewNode(hostname string, chassis []string, publicIP, privateIP string) *Nod
 	}
 }
 
-// AddChassisLabels generates Kubernetes labels from chassis assignments
-func (n *Node) AddChassisLabels() {
+// AddZoneLabels generates Kubernetes labels from zone assignments
+func (n *Node) AddZoneLabels() {
 	if n.K8sLabels == nil {
 		n.K8sLabels = make(map[string]string)
 	}
-	for _, c := range n.Chassis {
-		n.K8sLabels[c] = "true"
+	for _, z := range n.Zones {
+		n.K8sLabels[z] = "true"
 	}
 }
 

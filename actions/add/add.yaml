@@ -24,10 +24,10 @@ action:
       description: The private IP address (auto-assigned if not provided)
       type: string
       default: ""
-    - name: chassis
-      shorthand: c
-      title: Chassis
-      description: "Chassis paths to allocate (can be specified multiple times)"
+    - name: zone
+      shorthand: z
+      title: Zone
+      description: "Zones to allocate (can be specified multiple times)"
       type: array
       default: []
   result:
@@ -41,7 +41,7 @@ action:
         type: string
       private_ip:
         type: string
-      chassis:
+      zones:
         type: array
         items:
           type: string

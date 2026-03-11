@@ -5,8 +5,8 @@ import (
 	"sort"
 
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-chassis/pkg/chassis"
 	"github.com/plasmash/plasmactl-component/pkg/component"
+	"github.com/plasmash/plasmactl-topology/pkg/topology"
 	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 
@@ -14,7 +14,7 @@ import (
 type NodeListItem struct {
 	Node       string   `json:"node"                  yaml:"node"`
 	Platform   string   `json:"platform"              yaml:"platform"`
-	Chassis    []string `json:"chassis,omitempty"     yaml:"chassis,omitempty"`
+	Zones      []string `json:"zones,omitempty"       yaml:"zones,omitempty"`
 	Components []string `json:"components,omitempty"  yaml:"components,omitempty"`
 }
 
@@ -60,17 +60,17 @@ func (l *List) Execute() error {
 	}
 	sort.Strings(platforms)
 
-	// Load chassis and components once (only needed for tree mode)
-	var c *chassis.Chassis
-	chassisToComponents := make(map[string][]string)
+	// Load topology and components once (only needed for tree mode)
+	var topo *topology.Topology
+	zoneToComponents := make(map[string][]string)
 	if l.Tree {
-		c, err = chassis.Load(".")
+		topo, err = topology.Load(".")
 		if err != nil {
-			l.Log().Debug("Failed to load chassis", "error", err)
+			l.Log().Debug("Failed to load topology", "error", err)
 		}
 		components, _ := component.LoadFromPlaybooks(".")
 		for _, comp := range components {
-			chassisToComponents[comp.Chassis] = append(chassisToComponents[comp.Chassis], comp.Name)
+			zoneToComponents[comp.Zone] = append(zoneToComponents[comp.Zone], comp.Name)
 		}
 	}
 
@@ -81,8 +81,8 @@ func (l *List) Execute() error {
 		})
 
 		var allocations map[string][]string
-		if l.Tree && c != nil {
-			allocations = nodes.Allocations(c)
+		if l.Tree && topo != nil {
+			allocations = nodes.Allocations(topo)
 		}
 
 		for _, n := range nodes {
@@ -92,17 +92,17 @@ func (l *List) Execute() error {
 			}
 
 			if l.Tree {
-				chassisPaths := allocations[n.Hostname]
-				sort.Strings(chassisPaths)
-				if len(chassisPaths) > 0 {
-					item.Chassis = chassisPaths
+				zonePaths := allocations[n.Hostname]
+				sort.Strings(zonePaths)
+				if len(zonePaths) > 0 {
+					item.Zones = zonePaths
 				}
 
-				// Collect components across all chassis paths for this node
+				// Collect components across all zones for this node
 				var nodeComps []string
 				seen := make(map[string]bool)
-				for _, p := range chassisPaths {
-					for _, comp := range chassisToComponents[p] {
+				for _, p := range zonePaths {
+					for _, comp := range zoneToComponents[p] {
 						if !seen[comp] {
 							seen[comp] = true
 							nodeComps = append(nodeComps, comp)
@@ -131,7 +131,7 @@ func (l *List) Execute() error {
 	return nil
 }
 
-// printTree prints nodes as a tree with chassis paths (📍) and components (🧩)
+// printTree prints nodes as a tree with zones (📍) and components (🧩)
 // It reads enriched data from l.result.Nodes which was populated in Execute.
 func (l *List) printTree(platforms []string, nodesByPlatform map[string]node.Nodes) error {
 	term := l.Term()
@@ -162,13 +162,13 @@ func (l *List) printTree(platforms []string, nodesByPlatform map[string]node.Nod
 			item := l.result.Nodes[resultIdx]
 			resultIdx++
 
-			chassisPaths := item.Chassis
+			zonePaths := item.Zones
 			nodeComponents := item.Components
-			totalChildren := len(chassisPaths) + len(nodeComponents)
+			totalChildren := len(zonePaths) + len(nodeComponents)
 			childIdx := 0
 
-			// Print chassis paths
-			for _, chassisPath := range chassisPaths {
+			// Print zones
+			for _, zonePath := range zonePaths {
 				childIdx++
 				isLast := childIdx == totalChildren
 				var childPrefix string
@@ -177,7 +177,7 @@ func (l *List) printTree(platforms []string, nodesByPlatform map[string]node.Nod
 				} else {
 					childPrefix = nodeIndent + "├── "
 				}
-				term.Printfln("%s📍 %s", childPrefix, chassisPath)
+				term.Printfln("%s📍 %s", childPrefix, zonePath)
 			}
 
 			// Print components

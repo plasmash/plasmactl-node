@@ -18,7 +18,7 @@ type AddResult struct {
 	Platform  string   `json:"platform"`
 	PublicIP  string   `json:"public_ip"`
 	PrivateIP string   `json:"private_ip"`
-	Chassis   []string `json:"chassis,omitempty"`
+	Zones     []string `json:"zones,omitempty"`
 	File      string   `json:"file"`
 }
 
@@ -31,7 +31,7 @@ type Add struct {
 	Hostname  string
 	PublicIP  string
 	PrivateIP string
-	Chassis   []string
+	Zones     []string
 
 	result *AddResult
 }
@@ -90,8 +90,8 @@ func (a *Add) Execute() error {
 	}
 
 	// Create node configuration
-	n := node.NewNode(a.Hostname, a.Chassis, a.PublicIP, privateIP)
-	n.AddChassisLabels()
+	n := node.NewNode(a.Hostname, a.Zones, a.PublicIP, privateIP)
+	n.AddZoneLabels()
 
 	data, err := yaml.Marshal(n)
 	if err != nil {
@@ -108,15 +108,15 @@ func (a *Add) Execute() error {
 		Platform:  a.Platform,
 		PublicIP:  a.PublicIP,
 		PrivateIP: privateIP,
-		Chassis:   a.Chassis,
+		Zones:     a.Zones,
 		File:      nodeFile,
 	}
 
 	a.Term().Success().Printfln("Added node %s to platform %s", a.Hostname, a.Platform)
 	a.Term().Info().Printfln("  Public IP:  %s", a.PublicIP)
 	a.Term().Info().Printfln("  Private IP: %s", privateIP)
-	if len(a.Chassis) > 0 {
-		a.Term().Info().Printfln("  Chassis:    %v", a.Chassis)
+	if len(a.Zones) > 0 {
+		a.Term().Info().Printfln("  Zones:      %v", a.Zones)
 	}
 	a.Term().Info().Printfln("  File:       %s", nodeFile)
 

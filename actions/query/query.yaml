@@ -1,11 +1,11 @@
 runtime: plugin
 action:
   title: Query Nodes
-  description: "Query nodes by chassis path or component"
+  description: "Query nodes by zone or component"
   arguments:
     - name: identifier
       title: Identifier
-      description: Chassis path or component name to query
+      description: Zone or component name to query
       required: true
   options:
     - name: env
@@ -17,9 +17,9 @@ action:
     - name: kind
       shorthand: k
       title: Kind
-      description: Identifier kind to skip auto-detection (chassis, component)
+      description: Identifier kind to skip auto-detection (zone, component)
       type: string
-      enum: ["", chassis, component]
+      enum: ["", zone, component]
       default: ""
   result:
     type: object

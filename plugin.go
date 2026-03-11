@@ -60,7 +60,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 			Hostname:  input.Opt("hostname").(string),
 			PublicIP:  input.Opt("public-ip").(string),
 			PrivateIP: input.Opt("private-ip").(string),
-			Chassis:   action.InputOptSlice[string](input, "chassis"),
+			Zones:     action.InputOptSlice[string](input, "zone"),
 		}
 		add.SetLogger(log)
 		add.SetTerm(term)
@@ -145,7 +145,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 			Hostname:  input.Opt("hostname").(string),
 			PublicIP:  input.Opt("public-ip").(string),
 			PrivateIP: input.Opt("private-ip").(string),
-			Chassis:   action.InputOptSlice[string](input, "chassis"),
+			Zones:     action.InputOptSlice[string](input, "zone"),
 		}
 		register.SetLogger(log)
 		register.SetTerm(term)
@@ -153,7 +153,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return register.Result(), err
 	}))
 
-	// node:allocate - Allocate node to chassis paths (kubectl-style)
+	// node:allocate - Allocate node to zones (kubectl-style)
 	allocateYaml, _ := actionYamlFS.ReadFile("actions/allocate/allocate.yaml")
 	allocateAct := action.NewFromYAML("node:allocate", allocateYaml)
 	allocateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
@@ -170,7 +170,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return allocate.Result(), err
 	}))
 
-	// node:query - Query nodes by chassis path, component, or package
+	// node:query - Query nodes by zone, component, or package
 	queryYaml, _ := actionYamlFS.ReadFile("actions/query/query.yaml")
 	queryAct := action.NewFromYAML("node:query", queryYaml)
 	queryAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {

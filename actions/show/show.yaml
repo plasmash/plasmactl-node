@@ -20,9 +20,9 @@ action:
           platform:
             type: string
             description: Platform instance
-          chassis:
+          zones:
             type: array
-            description: Chassis sections allocated to this node
+            description: Zones allocated to this node
             items:
               type: string
           network:

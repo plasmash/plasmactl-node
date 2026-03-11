@@ -1,7 +1,7 @@
 runtime: plugin
 action:
   title: Allocate
-  description: Allocate a node to chassis paths
+  description: Allocate a node to zones
   arguments:
     - name: hostname
       title: Hostname
@@ -9,7 +9,7 @@ action:
       required: true
     - name: operations
       title: Operations
-      description: "Chassis operations: CHASSIS (add), CHASSIS- (remove), OLD/NEW (replace)"
+      description: "Zone operations: ZONE (add), ZONE- (remove), OLD/NEW (replace)"
       type: array
       required: false
   options:
@@ -24,7 +24,7 @@ action:
     properties:
       hostname:
         type: string
-      chassis:
+      zones:
         type: array
         items:
           type: string

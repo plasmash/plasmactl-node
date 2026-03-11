@@ -27,7 +27,7 @@ type ProviderInfo struct {
 type NodeInfo struct {
 	Node     string       `json:"node"`
 	Platform string       `json:"platform"`
-	Chassis  []string     `json:"chassis,omitempty"`
+	Zones    []string     `json:"zones,omitempty"`
 	Network  NetworkInfo  `json:"network"`
 	Provider ProviderInfo `json:"provider,omitempty"`
 }
@@ -93,7 +93,7 @@ func (s *Show) showNode(platform string, node node.Node) error {
 		Node: &NodeInfo{
 			Node:     node.Hostname,
 			Platform: platform,
-			Chassis:  node.Chassis,
+			Zones:    node.Zones,
 			Network: NetworkInfo{
 				PublicIP:   node.Network.PublicIP,
 				PrivateIP:  node.Network.PrivateIP,
@@ -111,11 +111,11 @@ func (s *Show) showNode(platform string, node node.Node) error {
 	s.Term().Printfln("node\t%s", n.Node)
 	s.Term().Printfln("platform\t%s", n.Platform)
 
-	if len(n.Chassis) > 0 {
+	if len(n.Zones) > 0 {
 		s.Term().Println()
-		s.Term().Info().Printfln("Chassis (%d)", len(n.Chassis))
-		for _, ch := range n.Chassis {
-			s.Term().Printfln("%s", ch)
+		s.Term().Info().Printfln("Zones (%d)", len(n.Zones))
+		for _, z := range n.Zones {
+			s.Term().Printfln("%s", z)
 		}
 	}
 
