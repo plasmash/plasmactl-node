@@ -10,7 +10,7 @@ A [Launchr](https://github.com/launchrctl/launchr) plugin for [Plasmactl](https:
 
 - **Infrastructure Provisioning**: Provision nodes via Terraform/OpenTofu
 - **Multi-Provider Support**: Scaleway, Hetzner, OVH, AWS, and more
-- **Chassis-Driven**: Allocate nodes to chassis sections for proper resource mapping
+- **Zone-Driven**: Allocate nodes to zones for proper resource mapping
 - **Manual Registration**: Register existing nodes manually
 - **IP Management**: Automatic private IP allocation from configurable pools
 
@@ -34,20 +34,20 @@ Options:
 Provision infrastructure for a platform:
 
 ```bash
-# Provision nodes with chassis specifications
+# Provision nodes with zone specifications
 plasmactl node:provision myplatform \
-  -c foundation.cluster.control:GP1-L:3 \
-  -c cognition.data:GPU-3090:2
+  -z foundation.cluster.control:GP1-L:3 \
+  -z cognition.data:GPU-3090:2
 
 # Dry run (preview only)
-plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3 --dry-run
+plasmactl node:provision myplatform -z foundation.cluster.control:GP1-L:3 --dry-run
 
 # Auto-approve without confirmation
-plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3 --auto-approve
+plasmactl node:provision myplatform -z foundation.cluster.control:GP1-L:3 --auto-approve
 ```
 
 Options:
-- `-c, --chassis`: Chassis specification (format: `section:type:count`)
+- `-z, --zone`: Zone specification (format: `zone:type:count`)
 - `--dry-run`: Preview infrastructure changes without applying
 - `--auto-approve`: Skip confirmation prompts
 
@@ -60,24 +60,24 @@ plasmactl node:register myplatform \
   --hostname server1 \
   --public-ip 51.159.x.x \
   --private-ip 192.168.1.10 \
-  --chassis foundation.cluster.control
+  --zone foundation.cluster.control
 ```
 
 Options:
 - `--hostname`: Node hostname (required)
 - `--public-ip`: Public IP address
 - `--private-ip`: Private IP address
-- `-c, --chassis`: Chassis assignments (can be specified multiple times)
+- `-z, --zone`: Zone assignments (can be specified multiple times)
 
 ### node:allocate
 
-Allocate a node to chassis sections using kubectl-style operations:
+Allocate a node to zones using kubectl-style operations:
 
 ```bash
 # Show current allocations (no operations = show mode)
 plasmactl node:allocate node001
 
-# Add chassis allocations
+# Add zone allocations
 plasmactl node:allocate node001 platform.foundation.cluster.control
 plasmactl node:allocate node001 platform.foundation.cluster.control platform.cognition.data
 
@@ -179,7 +179,7 @@ inst/
 
 ```yaml
 hostname: node001
-chassis:
+zones:
   - platform.foundation.cluster.control
   - platform.foundation.network.ingress
 network:
@@ -191,16 +191,16 @@ labels:
   foundation: "true"
 ```
 
-## Chassis-Driven Provisioning
+## Zone-Driven Provisioning
 
-The chassis specification maps logical architecture to physical infrastructure:
+The zone specification maps logical architecture to physical infrastructure:
 
 ```bash
-# Format: section:instance_type:count
+# Format: zone:instance_type:count
 plasmactl node:provision myplatform \
-  -c foundation.cluster.control:GP1-L:3 \      # 3 control plane nodes
-  -c cognition.data:GPU-3090:2 \               # 2 GPU nodes for AI/ML
-  -c cognition.data:HIGH-MEM:3                 # 3 high-memory nodes
+  -z foundation.cluster.control:GP1-L:3 \      # 3 control plane nodes
+  -z cognition.data:GPU-3090:2 \               # 2 GPU nodes for AI/ML
+  -z cognition.data:HIGH-MEM:3                 # 3 high-memory nodes
 ```
 
 ## Workflow Example
@@ -210,12 +210,12 @@ plasmactl node:provision myplatform \
 plasmactl node:add myplatform --provider scaleway
 
 # 2. Provision infrastructure
-plasmactl node:provision myplatform -c foundation.cluster.control:GP1-L:3
+plasmactl node:provision myplatform -z foundation.cluster.control:GP1-L:3
 
 # 3. Verify nodes
 plasmactl node:list
 
-# 4. Allocate additional chassis sections to nodes
+# 4. Allocate additional zones to nodes
 plasmactl node:allocate node001 platform.interaction.observability
 
 # 5. Deploy platform
@@ -226,14 +226,14 @@ plasmactl platform:deploy myplatform
 
 | Plugin | Command | Purpose |
 |--------|---------|---------|
-| plasmactl-chassis | `chassis:list` | List available chassis sections |
-| plasmactl-chassis | `chassis:show` | Show nodes allocated to a section |
+| plasmactl-topology | `topology:list` | List available zones |
+| plasmactl-topology | `topology:show` | Show nodes allocated to a zone |
 | plasmactl-platform | `platform:deploy` | Deploy to provisioned nodes |
 
 ## Documentation
 
 - [Plasmactl](https://github.com/plasmash/plasmactl) - Main CLI tool
-- [plasmactl-chassis](https://github.com/plasmash/plasmactl-chassis) - Chassis management
+- [plasmactl-topology](https://github.com/plasmash/plasmactl-topology) - Topology management
 - [Plasma Platform](https://plasma.sh) - Platform documentation
 
 ## License
