@@ -132,7 +132,7 @@ replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241007
 
 replace github.com/plasmash/plasmactl-component => ../plasmactl-component
 
-replace github.com/plasmash/plasmactl-topology => ../plasmactl-chassis
+replace github.com/plasmash/plasmactl-topology => ../plasmactl-topology
 
 replace github.com/plasmash/plasmactl-platform => ../plasmactl-platform
 
