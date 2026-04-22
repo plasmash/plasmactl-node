@@ -13,7 +13,7 @@ import (
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-node/internal/allocator"
-	"github.com/plasmash/plasmactl-node/internal/provisioner"
+	"github.com/plasmash/plasmactl-platform/pkg/provisioner"
 	"github.com/plasmash/plasmactl-node/pkg/node"
 	"github.com/plasmash/plasmactl-platform/pkg/dns"
 	"github.com/plasmash/plasmactl-platform/pkg/graph"
@@ -57,12 +57,12 @@ func (p *Provision) Result() any {
 
 // Execute runs the node:provision action
 func (p *Provision) Execute() error {
-	envDir := filepath.Join("inst", p.Name)
-	platformFile := filepath.Join(envDir, "platform.yaml")
-	nodesDir := filepath.Join(envDir, "nodes")
+	platformDir := filepath.Join("platforms", p.Name)
+	platformFile := filepath.Join(platformDir, "platform.yaml")
+	nodesDir := filepath.Join(platformDir, "nodes")
 
 	// Check if environment exists
-	if _, err := os.Stat(envDir); os.IsNotExist(err) {
+	if _, err := os.Stat(platformDir); os.IsNotExist(err) {
 		return fmt.Errorf("environment %q not found", p.Name)
 	}
 
@@ -103,10 +103,10 @@ func (p *Provision) Execute() error {
 }
 
 // poolsToSpecs converts platform.yaml pools to PoolSpecs.
-func poolsToSpecs(pools map[string]schema.Pool) []node.PoolSpec {
-	var specs []node.PoolSpec
+func poolsToSpecs(pools map[string]schema.Pool) []provisioner.PoolSpec {
+	var specs []provisioner.PoolSpec
 	for name, pool := range pools {
-		specs = append(specs, node.PoolSpec{
+		specs = append(specs, provisioner.PoolSpec{
 			Name:    name,
 			Zones:   pool.Zones,
 			Machine: pool.Machine,
@@ -136,7 +136,7 @@ func (p *Provision) resolveAPIToken(platform schema.Platform) (string, error) {
 }
 
 // provisionInfra provisions infrastructure using OpenTofu with the registered provider template
-func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, pools []node.PoolSpec) error {
+func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, pools []provisioner.PoolSpec) error {
 	ctx := context.Background()
 
 	// Resolve API token
@@ -170,6 +170,11 @@ func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, po
 	if err != nil {
 		return fmt.Errorf("failed to create provisioner: %w", err)
 	}
+	defer func() {
+		if cerr := mgr.Close(); cerr != nil {
+			p.Log().Warn("failed to clean up provisioner state", "error", cerr)
+		}
+	}()
 
 	// Clean stale state — import blocks in HCL are the sole source of truth
 	if err := mgr.CleanState(); err != nil {
@@ -236,7 +241,7 @@ func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, po
 	}
 
 	// Build pool lookup by name for zone resolution
-	poolsByName := make(map[string]node.PoolSpec)
+	poolsByName := make(map[string]provisioner.PoolSpec)
 	for _, pool := range pools {
 		poolsByName[pool.Name] = pool
 	}
@@ -429,7 +434,7 @@ var hostnameIndexRe = regexp.MustCompile(`-(\d+)$`)
 // scanExistingNodes reads node YAML files from nodesDir and builds ExistingNode
 // entries for nodes that have a provider_metadata.server_id. This enables TF
 // import blocks to adopt existing resources without persistent state.
-func (p *Provision) scanExistingNodes(nodesDir string, pools []node.PoolSpec) []provisioner.ExistingNode {
+func (p *Provision) scanExistingNodes(nodesDir string, pools []provisioner.PoolSpec) []provisioner.ExistingNode {
 	entries, err := os.ReadDir(nodesDir)
 	if err != nil {
 		return nil
@@ -510,7 +515,7 @@ func parseHostnamePool(hostname, envName string, validPools map[string]bool) (st
 
 // showProvisionImpact loads the platform graph and shows what components
 // will be deployed on the provisioned zones.
-func (p *Provision) showProvisionImpact(pools []node.PoolSpec) {
+func (p *Provision) showProvisionImpact(pools []provisioner.PoolSpec) {
 	g, err := graph.Load()
 	if err != nil {
 		p.Log().Debug("Platform graph not available for impact display", "error", err)

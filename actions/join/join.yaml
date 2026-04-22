@@ -1,0 +1,58 @@
+runtime: plugin
+action:
+  title: Join Platform
+  description: "Have an existing provider resource join a platform as a pool node (adopts without creating new infrastructure)"
+  arguments:
+    - name: platform
+      title: Platform
+      description: The platform to join
+      required: true
+  options:
+    - name: server-id
+      title: Server ID
+      description: Provider-specific resource ID (e.g. Scaleway Dedibox server ID, AWS instance ID)
+      type: string
+      required: true
+    - name: pool
+      title: Pool
+      description: Pool name in platform.yaml to attach the node to
+      type: string
+      required: true
+    - name: hostname
+      title: Hostname
+      description: Override auto-generated hostname (defaults to <platform>-<pool>-<next-index>)
+      type: string
+      default: ""
+    - name: dry-run
+      title: Dry Run
+      description: Generate HCL and show plan but don't apply
+      type: boolean
+      default: false
+    - name: auto-approve
+      title: Auto Approve
+      description: Skip interactive approval before applying
+      type: boolean
+      default: false
+  result:
+    type: object
+    properties:
+      hostname:
+        type: string
+      platform:
+        type: string
+      pool:
+        type: string
+      server_id:
+        type: string
+      public_ip:
+        type: string
+      private_ip:
+        type: string
+      zones:
+        type: array
+        items:
+          type: string
+      file:
+        type: string
+      dry_run:
+        type: boolean

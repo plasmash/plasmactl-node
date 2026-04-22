@@ -8,10 +8,10 @@ action:
       description: Node hostname or platform name (validates all nodes in platform)
       required: false
   options:
-    - name: env
-      shorthand: e
-      title: Environment
-      description: Environment name (looks in inst/<env>/nodes/)
+    - name: platform
+      shorthand: p
+      title: Platform
+      description: Platform name (looks in platforms/<platform>/nodes/)
       type: string
       default: ""
   result:

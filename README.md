@@ -92,7 +92,7 @@ plasmactl node:allocate node001 newsection oldsection- old/new
 ```
 
 Options:
-- `-e, --env`: Environment name (looks in `inst/<env>/nodes/`)
+- `-e, --env`: Environment name (looks in `platforms/<platform>/nodes/`)
 
 ### node:list
 
@@ -163,10 +163,10 @@ plasmactl-node/
 
 ## Directory Structure
 
-Nodes are stored in the `inst/` directory:
+Nodes are stored in the `platforms/` directory:
 
 ```
-inst/
+platforms/
 └── myplatform/
     ├── platform.yaml          # Platform configuration
     └── nodes/
@@ -226,14 +226,14 @@ plasmactl platform:deploy myplatform
 
 | Plugin | Command | Purpose |
 |--------|---------|---------|
-| plasmactl-topology | `topology:list` | List available zones |
-| plasmactl-topology | `topology:show` | Show nodes allocated to a zone |
+| plasmactl-zone | `zone:list` | List available zones |
+| plasmactl-zone | `zone:show` | Show nodes allocated to a zone |
 | plasmactl-platform | `platform:deploy` | Deploy to provisioned nodes |
 
 ## Documentation
 
 - [Plasmactl](https://github.com/plasmash/plasmactl) - Main CLI tool
-- [plasmactl-topology](https://github.com/plasmash/plasmactl-topology) - Topology management
+- [plasmactl-zone](https://github.com/plasmash/plasmactl-zone) - Topology management
 - [Plasma Platform](https://plasma.sh) - Platform documentation
 
 ## License

@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Node represents a node configuration from inst/<platform>/nodes/<hostname>.yaml
+// Node represents a node configuration from platforms/<platform>/nodes/<hostname>.yaml
 type Node struct {
 	Hostname string   `yaml:"hostname"`
 	Platform string   `yaml:"-"` // Platform name (derived from directory structure)
@@ -63,15 +63,6 @@ type ProviderMetadata struct {
 	Machine    string `yaml:"machine,omitempty"`
 }
 
-// PoolSpec represents a pool specification for provisioning.
-// Used to parse CLI input like "control:platform.foundation.cluster.control:GP1-M:3"
-type PoolSpec struct {
-	Name    string   // pool name (used for resource naming and hostnames)
-	Zones   []string // zones co-located on these nodes
-	Machine string   // hardware identifier (provider-specific)
-	Count   int      // number of nodes
-}
-
 // NewNode creates a new Node with the given configuration
 func NewNode(hostname string, zones []string, publicIP, privateIP string) *Node {
 	return &Node{
@@ -117,18 +108,18 @@ func Load(path string) (*Node, error) {
 	return &node, nil
 }
 
-// LoadAll loads all nodes from inst/<platform>/nodes/ directories.
+// LoadAll loads all nodes from platforms/<platform>/nodes/ directories.
 // If platform is empty, loads from all platforms.
 func LoadAll(dir string, platform string) (Nodes, error) {
 	var nodes Nodes
 
-	instDir := filepath.Join(dir, "inst")
+	platformsDir := filepath.Join(dir, "platforms")
 	if platform != "" {
-		return loadNodesFromPlatform(instDir, platform)
+		return loadNodesFromPlatform(platformsDir, platform)
 	}
 
 	// Load from all platforms
-	entries, err := os.ReadDir(instDir)
+	entries, err := os.ReadDir(platformsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -140,7 +131,7 @@ func LoadAll(dir string, platform string) (Nodes, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		platformNodes, err := loadNodesFromPlatform(instDir, entry.Name())
+		platformNodes, err := loadNodesFromPlatform(platformsDir, entry.Name())
 		if err != nil {
 			continue
 		}
@@ -154,8 +145,8 @@ func LoadAll(dir string, platform string) (Nodes, error) {
 func LoadByPlatform(dir string) (map[string]Nodes, error) {
 	result := make(map[string]Nodes)
 
-	instDir := filepath.Join(dir, "inst")
-	entries, err := os.ReadDir(instDir)
+	platformsDir := filepath.Join(dir, "platforms")
+	entries, err := os.ReadDir(platformsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return result, nil
@@ -167,7 +158,7 @@ func LoadByPlatform(dir string) (map[string]Nodes, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		nodes, err := loadNodesFromPlatform(instDir, entry.Name())
+		nodes, err := loadNodesFromPlatform(platformsDir, entry.Name())
 		if err != nil {
 			continue
 		}
@@ -179,8 +170,8 @@ func LoadByPlatform(dir string) (map[string]Nodes, error) {
 	return result, nil
 }
 
-func loadNodesFromPlatform(instDir, platform string) (Nodes, error) {
-	nodesDir := filepath.Join(instDir, platform, "nodes")
+func loadNodesFromPlatform(platformsDir, platform string) (Nodes, error) {
+	nodesDir := filepath.Join(platformsDir, platform, "nodes")
 	entries, err := os.ReadDir(nodesDir)
 	if err != nil {
 		if os.IsNotExist(err) {

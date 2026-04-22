@@ -43,12 +43,12 @@ func (a *Add) Result() any {
 
 // Execute runs the node:add action
 func (a *Add) Execute() error {
-	envDir := filepath.Join("inst", a.Platform)
-	nodesDir := filepath.Join(envDir, "nodes")
-	platformFile := filepath.Join(envDir, "platform.yaml")
+	platformDir := filepath.Join("platforms", a.Platform)
+	nodesDir := filepath.Join(platformDir, "nodes")
+	platformFile := filepath.Join(platformDir, "platform.yaml")
 
 	// Check if platform exists
-	if _, err := os.Stat(envDir); os.IsNotExist(err) {
+	if _, err := os.Stat(platformDir); os.IsNotExist(err) {
 		return fmt.Errorf("platform %q not found", a.Platform)
 	}
 

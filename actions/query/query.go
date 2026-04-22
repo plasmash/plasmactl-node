@@ -26,7 +26,7 @@ type Query struct {
 	action.WithTerm
 
 	Identifier string
-	Env        string
+	Platform   string
 	Kind       string // "zone" or "component" to skip auto-detection
 
 	result QueryResult
@@ -46,11 +46,11 @@ func (q *Query) Execute() error {
 		q.Log().Debug("Failed to load nodes", "error", err)
 	}
 
-	// Filter by environment if specified
-	if q.Env != "" {
+	// Filter by platform if specified
+	if q.Platform != "" {
 		filtered := make(map[string]node.Nodes)
-		if nodes, ok := nodesByPlatform[q.Env]; ok {
-			filtered[q.Env] = nodes
+		if nodes, ok := nodesByPlatform[q.Platform]; ok {
+			filtered[q.Platform] = nodes
 		}
 		nodesByPlatform = filtered
 	}
@@ -140,12 +140,13 @@ func (q *Query) Execute() error {
 		return matchingNodes[i].n.Hostname < matchingNodes[j].n.Hostname
 	})
 
-	// Build result
+	// Build result and print flat text output (one per line, scriptable)
 	for _, m := range matchingNodes {
 		q.result.Nodes = append(q.result.Nodes, NodeMatch{
 			Node:     m.n.Hostname,
 			Platform: m.platform,
 		})
+		q.Term().Printfln("%s@%s", m.n.Hostname, m.platform)
 	}
 
 	return nil

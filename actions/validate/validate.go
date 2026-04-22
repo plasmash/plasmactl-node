@@ -42,7 +42,7 @@ type Validate struct {
 	action.WithTerm
 
 	Identifier string
-	Env        string
+	Platform   string
 
 	graph  *graph.PlatformGraph
 	result *ValidateResult
@@ -67,7 +67,7 @@ func (v *Validate) Execute() error {
 
 	// Determine what to validate
 	if v.Identifier == "" {
-		// Validate all nodes in all platforms (or specific env)
+		// Validate all nodes in all platforms (or specific platform)
 		return v.validateAllNodes()
 	}
 
@@ -82,7 +82,7 @@ func (v *Validate) Execute() error {
 
 // isPlatform checks if the identifier is a platform directory
 func (v *Validate) isPlatform(name string) bool {
-	platformDir := filepath.Join("inst", name)
+	platformDir := filepath.Join("platforms", name)
 	platformFile := filepath.Join(platformDir, "platform.yaml")
 	_, err := os.Stat(platformFile)
 	return err == nil
@@ -90,26 +90,26 @@ func (v *Validate) isPlatform(name string) bool {
 
 // validateAllNodes validates all nodes across all platforms
 func (v *Validate) validateAllNodes() error {
-	instDir := "inst"
+	platformsDir := "platforms"
 
-	if v.Env != "" {
-		return v.validatePlatformNodes(v.Env)
+	if v.Platform != "" {
+		return v.validatePlatformNodes(v.Platform)
 	}
 
-	entries, err := os.ReadDir(instDir)
+	entries, err := os.ReadDir(platformsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			v.Term().Warning().Println("No platforms found (inst/ directory does not exist)")
+			v.Term().Warning().Println("No platforms found (platforms/ directory does not exist)")
 			return nil
 		}
-		return fmt.Errorf("failed to read inst directory: %w", err)
+		return fmt.Errorf("failed to read platforms directory: %w", err)
 	}
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		platformFile := filepath.Join(instDir, entry.Name(), "platform.yaml")
+		platformFile := filepath.Join(platformsDir, entry.Name(), "platform.yaml")
 		if _, err := os.Stat(platformFile); os.IsNotExist(err) {
 			continue
 		}
@@ -123,7 +123,7 @@ func (v *Validate) validateAllNodes() error {
 
 // validatePlatformNodes validates all nodes in a specific platform
 func (v *Validate) validatePlatformNodes(platform string) error {
-	nodesDir := filepath.Join("inst", platform, "nodes")
+	nodesDir := filepath.Join("platforms", platform, "nodes")
 	nodes, err := node.LoadAll(".", platform)
 	if err != nil {
 		return fmt.Errorf("failed to load nodes: %w", err)
@@ -164,7 +164,7 @@ func (v *Validate) validatePlatformNodes(platform string) error {
 // validateSingleNode validates a single node by hostname
 func (v *Validate) validateSingleNode(hostname string) error {
 	// Find the node
-	nodes, err := node.LoadAll(".", v.Env)
+	nodes, err := node.LoadAll(".", v.Platform)
 	if err != nil {
 		return fmt.Errorf("failed to load nodes: %w", err)
 	}
@@ -174,7 +174,7 @@ func (v *Validate) validateSingleNode(hostname string) error {
 		return fmt.Errorf("node %q not found", hostname)
 	}
 
-	nodesDir := filepath.Join("inst", found.Platform, "nodes")
+	nodesDir := filepath.Join("platforms", found.Platform, "nodes")
 	publicIPs := make(map[string]string)
 	privateIPs := make(map[string]string)
 

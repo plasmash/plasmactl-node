@@ -3,7 +3,7 @@ package node
 import (
 	"sort"
 
-	"github.com/plasmash/plasmactl-topology/pkg/topology"
+	"github.com/plasmash/plasmactl-zone/pkg/topology"
 )
 
 // Nodes is a collection of Node.

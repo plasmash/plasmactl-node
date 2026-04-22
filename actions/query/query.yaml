@@ -8,10 +8,10 @@ action:
       description: Zone or component name to query
       required: true
   options:
-    - name: env
-      shorthand: e
-      title: Environment
-      description: Filter by environment/platform
+    - name: platform
+      shorthand: p
+      title: Platform
+      description: Filter by platform
       type: string
       default: ""
     - name: kind

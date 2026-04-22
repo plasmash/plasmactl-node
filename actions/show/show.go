@@ -57,10 +57,10 @@ func (s *Show) Execute() error {
 	s.result = &ShowResult{}
 
 	// Find node by hostname across all platforms
-	instDir := "inst"
-	entries, err := os.ReadDir(instDir)
+	platformsDir := "platforms"
+	entries, err := os.ReadDir(platformsDir)
 	if err != nil {
-		return fmt.Errorf("failed to read inst directory: %w", err)
+		return fmt.Errorf("failed to read platforms directory: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -69,7 +69,7 @@ func (s *Show) Execute() error {
 		}
 
 		platform := entry.Name()
-		nodesDir := filepath.Join(instDir, platform, "nodes")
+		nodesDir := filepath.Join(platformsDir, platform, "nodes")
 
 		nodes, err := s.listNodes(nodesDir)
 		if err != nil {

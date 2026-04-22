@@ -6,7 +6,7 @@ import (
 
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-component/pkg/component"
-	"github.com/plasmash/plasmactl-topology/pkg/topology"
+	"github.com/plasmash/plasmactl-zone/pkg/topology"
 	"github.com/plasmash/plasmactl-node/pkg/node"
 )
 

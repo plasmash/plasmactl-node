@@ -8,7 +8,7 @@ import (
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
-	"github.com/plasmash/plasmactl-node/internal/provisioner"
+	"github.com/plasmash/plasmactl-platform/pkg/provisioner"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -42,12 +42,12 @@ func (d *Destroy) Result() any {
 func (d *Destroy) Execute() error {
 	d.result = &DestroyResult{Name: d.Name}
 
-	envDir := filepath.Join("inst", d.Name)
-	platformFile := filepath.Join(envDir, "platform.yaml")
-	nodesDir := filepath.Join(envDir, "nodes")
+	platformDir := filepath.Join("platforms", d.Name)
+	platformFile := filepath.Join(platformDir, "platform.yaml")
+	nodesDir := filepath.Join(platformDir, "nodes")
 
 	// Check if environment exists
-	if _, err := os.Stat(envDir); os.IsNotExist(err) {
+	if _, err := os.Stat(platformDir); os.IsNotExist(err) {
 		return fmt.Errorf("environment %q not found", d.Name)
 	}
 
@@ -87,6 +87,11 @@ func (d *Destroy) Execute() error {
 	if err != nil {
 		return fmt.Errorf("failed to create provisioner: %w", err)
 	}
+	defer func() {
+		if cerr := mgr.Close(); cerr != nil {
+			d.Log().Warn("failed to clean up provisioner state", "error", cerr)
+		}
+	}()
 
 	// Initialize
 	d.Term().Info().Println("Initializing provisioner...")

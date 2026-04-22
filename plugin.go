@@ -11,11 +11,12 @@ import (
 
 	"github.com/plasmash/plasmactl-node/actions/add"
 	"github.com/plasmash/plasmactl-node/actions/allocate"
+	"github.com/plasmash/plasmactl-node/actions/deallocate"
 	"github.com/plasmash/plasmactl-node/actions/destroy"
+	"github.com/plasmash/plasmactl-node/actions/join"
 	"github.com/plasmash/plasmactl-node/actions/list"
 	"github.com/plasmash/plasmactl-node/actions/provision"
 	"github.com/plasmash/plasmactl-node/actions/query"
-	"github.com/plasmash/plasmactl-node/actions/register"
 	"github.com/plasmash/plasmactl-node/actions/show"
 	"github.com/plasmash/plasmactl-node/actions/validate"
 )
@@ -134,40 +135,60 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return destroy.Result(), err
 	}))
 
-	// node:register - Manually register a node
-	registerYaml, _ := actionYamlFS.ReadFile("actions/register/register.yaml")
-	registerAct := action.NewFromYAML("node:register", registerYaml)
-	registerAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
+	// node:join - Adopt an existing provider resource into a pool (no new infrastructure created)
+	joinYaml, _ := actionYamlFS.ReadFile("actions/join/join.yaml")
+	joinAct := action.NewFromYAML("node:join", joinYaml)
+	joinAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
-		register := &register.Register{
-			EnvName:   input.Arg("name").(string),
-			Hostname:  input.Opt("hostname").(string),
-			PublicIP:  input.Opt("public-ip").(string),
-			PrivateIP: input.Opt("private-ip").(string),
-			Zones:     action.InputOptSlice[string](input, "zone"),
+		j := &join.Join{
+			Keyring:     p.k,
+			Platform:    input.Arg("platform").(string),
+			ServerID:    input.Opt("server-id").(string),
+			Pool:        input.Opt("pool").(string),
+			Hostname:    input.Opt("hostname").(string),
+			DryRun:      input.Opt("dry-run").(bool),
+			AutoApprove: input.Opt("auto-approve").(bool),
 		}
-		register.SetLogger(log)
-		register.SetTerm(term)
-		err := register.Execute()
-		return register.Result(), err
+		j.SetLogger(log)
+		j.SetTerm(term)
+		err := j.Execute()
+		return j.Result(), err
 	}))
 
-	// node:allocate - Allocate node to zones (kubectl-style)
+	// node:allocate - Allocate a node to one or more zones
 	allocateYaml, _ := actionYamlFS.ReadFile("actions/allocate/allocate.yaml")
 	allocateAct := action.NewFromYAML("node:allocate", allocateYaml)
 	allocateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
 		input := a.Input()
 		log, term := getLogger(a)
-		allocate := &allocate.Allocate{
-			Hostname:   input.Arg("hostname").(string),
-			Operations: action.InputArgSlice[string](input, "operations"),
-			Env:        input.Opt("env").(string),
+		alloc := &allocate.Allocate{
+			Hostname: input.Arg("hostname").(string),
+			Zones:    action.InputArgSlice[string](input, "zones"),
+			Platform: input.Opt("platform").(string),
 		}
-		allocate.SetLogger(log)
-		allocate.SetTerm(term)
-		err := allocate.Execute()
-		return allocate.Result(), err
+		alloc.SetLogger(log)
+		alloc.SetTerm(term)
+		err := alloc.Execute()
+		return alloc.Result(), err
+	}))
+
+	// node:deallocate - Deallocate a node from one or more zones
+	deallocateYaml, _ := actionYamlFS.ReadFile("actions/deallocate/deallocate.yaml")
+	deallocateAct := action.NewFromYAML("node:deallocate", deallocateYaml)
+	deallocateAct.SetRuntime(action.NewFnRuntimeWithResult(func(_ context.Context, a *action.Action) (any, error) {
+		input := a.Input()
+		log, term := getLogger(a)
+		dealloc := &deallocate.Deallocate{
+			Hostname:  input.Arg("hostname").(string),
+			Zones:     action.InputArgSlice[string](input, "zones"),
+			Platform:  input.Opt("platform").(string),
+			Recursive: input.Opt("recursive").(bool),
+		}
+		dealloc.SetLogger(log)
+		dealloc.SetTerm(term)
+		err := dealloc.Execute()
+		return dealloc.Result(), err
 	}))
 
 	// node:query - Query nodes by zone, component, or package
@@ -178,7 +199,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		log, term := getLogger(a)
 		q := &query.Query{
 			Identifier: input.Arg("identifier").(string),
-			Env:        input.Opt("env").(string),
+			Platform:   input.Opt("platform").(string),
 			Kind:       input.Opt("kind").(string),
 		}
 		q.SetLogger(log)
@@ -196,7 +217,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		identifier, _ := input.Arg("identifier").(string)
 		v := &validate.Validate{
 			Identifier: identifier,
-			Env:        input.Opt("env").(string),
+			Platform:   input.Opt("platform").(string),
 		}
 		v.SetLogger(log)
 		v.SetTerm(term)
@@ -210,8 +231,9 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		listAct,
 		showAct,
 		destroyAct,
-		registerAct,
+		joinAct,
 		allocateAct,
+		deallocateAct,
 		queryAct,
 		validateAct,
 	}, nil

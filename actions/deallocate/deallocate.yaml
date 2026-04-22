@@ -1,7 +1,7 @@
 runtime: plugin
 action:
-  title: Allocate
-  description: Allocate a node to one or more zones
+  title: Deallocate
+  description: Deallocate a node from one or more zones (exact match; use --recursive to cascade)
   arguments:
     - name: hostname
       title: Hostname
@@ -9,7 +9,7 @@ action:
       required: true
     - name: zones
       title: Zones
-      description: One or more zones to allocate the node to
+      description: One or more zones to deallocate the node from
       type: array
       required: true
   options:
@@ -19,6 +19,12 @@ action:
       description: Platform name (looks in platforms/<platform>/nodes/)
       type: string
       default: ""
+    - name: recursive
+      shorthand: r
+      title: Recursive
+      description: When deallocating a zone that isn't directly allocated but has allocated descendants, cascade-remove those descendants
+      type: boolean
+      default: false
   result:
     type: object
     properties:
@@ -28,7 +34,7 @@ action:
         type: array
         items:
           type: string
-      added:
+      removed:
         type: array
         items:
           type: string
