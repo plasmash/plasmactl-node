@@ -3,12 +3,11 @@ module github.com/plasmash/plasmactl-node
 go 1.25.0
 
 require (
-	github.com/hashicorp/terraform-exec v0.21.0
 	github.com/launchrctl/keyring v0.9.0
 	github.com/launchrctl/launchr v0.22.0
-	github.com/plasmash/plasmactl-zone v1.0.20
 	github.com/plasmash/plasmactl-component v1.2.3
 	github.com/plasmash/plasmactl-platform v1.5.1
+	github.com/plasmash/plasmactl-zone v1.0.20
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -57,6 +56,7 @@ require (
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
+	github.com/hashicorp/terraform-exec v0.21.0 // indirect
 	github.com/hashicorp/terraform-json v0.22.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -84,7 +84,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/plasmash/plasmactl-model v0.0.0-00010101000000-000000000000 // indirect
+	github.com/plasmash/plasmactl-model v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/pterm/pterm v0.12.82 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
