@@ -3,11 +3,13 @@ module github.com/plasmash/plasmactl-node
 go 1.25.0
 
 require (
-	github.com/launchrctl/keyring v0.9.0
+	github.com/launchrctl/keyring v0.9.1
 	github.com/launchrctl/launchr v0.22.0
+	github.com/plasmash/plasmactl-auth v0.0.0-00010101000000-000000000000
 	github.com/plasmash/plasmactl-component v1.2.3
 	github.com/plasmash/plasmactl-platform v1.5.1
 	github.com/plasmash/plasmactl-zone v1.0.20
+	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -91,7 +93,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
@@ -129,6 +130,8 @@ require (
 
 // Resolve ambiguous import for genproto split modules
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241007155032-5fefd90f89a9
+
+replace github.com/plasmash/plasmactl-auth => ../plasmactl-auth
 
 replace github.com/plasmash/plasmactl-component => ../plasmactl-component
 

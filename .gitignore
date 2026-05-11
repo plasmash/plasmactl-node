@@ -1,0 +1,10 @@
+/bin/
+/build_*
+/dist/
+/vendor/
+/.launchr
+/.plasma/
+/.plasmactl/
+.DS_Store
+.idea/
+*.gen.go

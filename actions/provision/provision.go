@@ -12,6 +12,7 @@ import (
 
 	"github.com/launchrctl/keyring"
 	"github.com/launchrctl/launchr/pkg/action"
+	"github.com/plasmash/plasmactl-auth/pkg/auth"
 	"github.com/plasmash/plasmactl-node/internal/allocator"
 	"github.com/plasmash/plasmactl-platform/pkg/provisioner"
 	"github.com/plasmash/plasmactl-node/pkg/node"
@@ -135,34 +136,67 @@ func (p *Provision) resolveAPIToken(platform schema.Platform) (string, error) {
 	return apiToken, nil
 }
 
+// resolveProvisionCreds dispatches by platform.yaml schema shape: the new
+// 2-field credentials route through plasmactl-auth, while legacy single-token
+// configurations continue to use the keyring directly.
+func resolveProvisionCreds(ctx context.Context, platform schema.Platform, platformDir string, k keyring.Keyring) (provisioner.ProviderConfig, error) {
+	api := platform.Infrastructure.API
+	switch {
+	case api.ClientID != "" || api.AccessKey != "":
+		creds, err := auth.Resolve(ctx, k, platformDir, platform.Infrastructure.MetalProvider)
+		if err != nil {
+			return provisioner.ProviderConfig{}, err
+		}
+		return provisioner.ProviderConfig{
+			OVHClientID:       creds.OVHClientID,
+			OVHClientSecret:   creds.OVHClientSecret,
+			OVHEndpoint:       creds.OVHEndpoint,
+			ScalewayAccessKey: creds.ScalewayAccessKey,
+			ScalewaySecretKey: creds.ScalewaySecretKey,
+		}, nil
+	case api.Token != "":
+		tmpP := &Provision{Keyring: k}
+		tok, err := tmpP.resolveAPIToken(platform)
+		if err != nil {
+			return provisioner.ProviderConfig{}, err
+		}
+		return provisioner.ProviderConfig{APIToken: tok}, nil
+	default:
+		return provisioner.ProviderConfig{}, fmt.Errorf("no credentials configured for platform %q", platform.Name)
+	}
+}
+
 // provisionInfra provisions infrastructure using OpenTofu with the registered provider template
 func (p *Provision) provisionInfra(nodesDir string, platform schema.Platform, pools []provisioner.PoolSpec) error {
 	ctx := context.Background()
 
-	// Resolve API token
-	apiToken, err := p.resolveAPIToken(platform)
+	platformDir := filepath.Join("platforms", p.Name)
+	credsConfig, err := resolveProvisionCreds(ctx, platform, platformDir, p.Keyring)
 	if err != nil {
 		return err
 	}
 
-	// Scan existing node files to build import list
 	existingNodes := p.scanExistingNodes(nodesDir, pools)
 	if len(existingNodes) > 0 {
 		p.Term().Info().Printfln("Found %d existing nodes to import", len(existingNodes))
 	}
 
-	// Build provider config from platform infrastructure fields
 	config := provisioner.ProviderConfig{
-		EnvName:       p.Name,
-		Pools:         pools,
-		Provider:      platform.Infrastructure.MetalProvider,
-		APIToken:      apiToken,
-		Zone:          platform.Infrastructure.Zone,
-		Region:        platform.Infrastructure.Region,
-		ProjectID:     platform.Infrastructure.ProjectID,
-		Image:         platform.Infrastructure.Image,
-		SSHKeyID:      platform.Infrastructure.SSHKeyID,
-		ExistingNodes: existingNodes,
+		EnvName:           p.Name,
+		Pools:             pools,
+		Provider:          platform.Infrastructure.MetalProvider,
+		APIToken:          credsConfig.APIToken,
+		OVHClientID:       credsConfig.OVHClientID,
+		OVHClientSecret:   credsConfig.OVHClientSecret,
+		OVHEndpoint:       credsConfig.OVHEndpoint,
+		ScalewayAccessKey: credsConfig.ScalewayAccessKey,
+		ScalewaySecretKey: credsConfig.ScalewaySecretKey,
+		Zone:              platform.Infrastructure.Zone,
+		Region:            platform.Infrastructure.Region,
+		ProjectID:         platform.Infrastructure.ProjectID,
+		Image:             platform.Infrastructure.Image,
+		SSHKeyID:          platform.Infrastructure.SSHKeyID,
+		ExistingNodes:     existingNodes,
 	}
 
 	// Create provisioner manager (workdir: .plasma/provision/<envName>/)
@@ -349,8 +383,9 @@ func (p *Provision) configureDNS(ctx context.Context, platform schema.Platform, 
 		return
 	}
 
-	// Resolve DNS credentials from keyring
-	username, token, err := p.resolveDNSCredentials(platform)
+	// Resolve DNS credentials from keyring (dual-shape: legacy token or new OVH 2-field)
+	platformDir := filepath.Join("platforms", p.Name)
+	dnsCreds, err := resolveDNSCredsV2(ctx, platform, platformDir, p.Keyring)
 	if err != nil {
 		p.Term().Warning().Printfln("  DNS skipped: %v", err)
 		return
@@ -362,17 +397,20 @@ func (p *Provision) configureDNS(ctx context.Context, platform schema.Platform, 
 	}
 
 	config := dns.Config{
-		Provider:     platform.DNS.Provider,
-		APIToken:     token,
-		APIUsername:   username,
-		Domain:       platform.DNS.Domain,
-		Zone:         zone,
-		Subdomain:    dns.DeriveSubdomain(platform.DNS.Domain, zone),
-		Region:       platform.DNS.Region,
-		WebIP:        webIP,
-		MailIP:       mailIP,
-		DKIMSelector: "default",
-		DKIMKey:      platform.DNS.DKIMKey,
+		Provider:        platform.DNS.Provider,
+		APIToken:        dnsCreds.Token,
+		APIUsername:     dnsCreds.Username,
+		OVHClientID:     dnsCreds.OVHClientID,
+		OVHClientSecret: dnsCreds.OVHClientSecret,
+		OVHEndpoint:     dnsCreds.OVHEndpoint,
+		Domain:          platform.DNS.Domain,
+		Zone:            zone,
+		Subdomain:       dns.DeriveSubdomain(platform.DNS.Domain, zone),
+		Region:          platform.DNS.Region,
+		WebIP:           webIP,
+		MailIP:          mailIP,
+		DKIMSelector:    "default",
+		DKIMKey:         platform.DNS.DKIMKey,
 	}
 
 	dnsManager, err := dns.NewManager(p.Name)
@@ -426,6 +464,50 @@ func (p *Provision) resolveDNSCredentials(platform schema.Platform) (username, t
 		return "", "", fmt.Errorf("no DNS credentials for %s (run: plasmactl keyring:login %s)", platform.DNS.Provider, platform.DNS.Provider)
 	}
 	return cred.Username, cred.Password, nil
+}
+
+// DNSCreds is the credential bundle passed into dns.Config fields.
+// Legacy single-token providers (cloudflare, gandi, inwx, ovh-token-shape)
+// populate Token + optionally Username. New 2-field OVH populates
+// OVHClientID/OVHClientSecret/OVHEndpoint. Scaleway DNS isn't supported in v1.
+type DNSCreds struct {
+	Token    string
+	Username string
+
+	// New OVH 2-field
+	OVHClientID     string
+	OVHClientSecret string
+	OVHEndpoint     string // "ovh-eu" / "ovh-ca" / "ovh-us"
+}
+
+// resolveDNSCredsV2 dispatches by DNS schema shape. New shape only meaningful
+// only for ovh; other DNS providers (cloudflare/gandi/inwx) keep the legacy form.
+func resolveDNSCredsV2(ctx context.Context, platform schema.Platform, platformDir string, k keyring.Keyring) (DNSCreds, error) {
+	dnsApi := platform.DNS.API
+	switch {
+	case dnsApi.ClientID != "" || dnsApi.AccessKey != "":
+		if platform.DNS.Provider != "ovh" {
+			return DNSCreds{}, fmt.Errorf("dns: 2-field schema only supported for ovh in v1 (got %q)", platform.DNS.Provider)
+		}
+		creds, err := auth.Resolve(ctx, k, platformDir, "ovh")
+		if err != nil {
+			return DNSCreds{}, err
+		}
+		return DNSCreds{
+			OVHClientID:     creds.OVHClientID,
+			OVHClientSecret: creds.OVHClientSecret,
+			OVHEndpoint:     creds.OVHEndpoint,
+		}, nil
+	case dnsApi.Token != "":
+		tmpP := &Provision{Keyring: k}
+		username, token, err := tmpP.resolveDNSCredentials(platform)
+		if err != nil {
+			return DNSCreds{}, err
+		}
+		return DNSCreds{Token: token, Username: username}, nil
+	default:
+		return DNSCreds{}, fmt.Errorf("no DNS credentials configured")
+	}
 }
 
 // hostnameIndexRe matches the trailing numeric index from hostnames like "myenv-control-001"

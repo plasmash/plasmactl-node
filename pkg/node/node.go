@@ -39,13 +39,20 @@ type Resources struct {
 	GPU    string `yaml:"gpu,omitempty"`
 }
 
-// Network defines network configuration for a node
+// Network defines network configuration for a node.
+//
+// PublicGateway / PublicPrefix capture the provider's public-IP routing
+// model (populated by node:join enrichment). Empty/zero means the
+// downstream inventory plugin should fall back to legacy Scaleway-pattern
+// derivation (gateway = public_ip[:3]+".1", prefix = 24).
 type Network struct {
-	PublicIP   string `yaml:"public_ip"`
-	PrivateIP  string `yaml:"private_ip"`
-	FailoverIP string `yaml:"failover_ip,omitempty"`
-	PublicMAC  string `yaml:"public_mac,omitempty"`
-	PrivateMAC string `yaml:"private_mac,omitempty"`
+	PublicIP      string `yaml:"public_ip"`
+	PrivateIP     string `yaml:"private_ip"`
+	FailoverIP    string `yaml:"failover_ip,omitempty"`
+	PublicMAC     string `yaml:"public_mac,omitempty"`
+	PrivateMAC    string `yaml:"private_mac,omitempty"`
+	PublicGateway string `yaml:"public_gateway,omitempty"`
+	PublicPrefix  int    `yaml:"public_prefix,omitempty"`
 }
 
 // FormatDisplayName formats a node display name as "hostname@platform".
@@ -55,12 +62,13 @@ func FormatDisplayName(hostname, platform string) string {
 
 // ProviderMetadata stores provider-specific metadata
 type ProviderMetadata struct {
-	ServerID   string `yaml:"server_id,omitempty"`
-	Datacenter string `yaml:"datacenter,omitempty"`
-	Zone       string `yaml:"zone,omitempty"`
-	Region     string `yaml:"region,omitempty"`
-	OfferID    string `yaml:"offer_id,omitempty"`
-	Machine    string `yaml:"machine,omitempty"`
+	Provider   string `yaml:"provider,omitempty"   json:"provider,omitempty"`
+	ServerID   string `yaml:"server_id,omitempty"  json:"server_id,omitempty"`
+	Datacenter string `yaml:"datacenter,omitempty" json:"datacenter,omitempty"`
+	Zone       string `yaml:"zone,omitempty"       json:"zone,omitempty"`
+	Region     string `yaml:"region,omitempty"     json:"region,omitempty"`
+	OfferID    string `yaml:"offer_id,omitempty"   json:"offer_id,omitempty"`
+	Machine    string `yaml:"machine,omitempty"    json:"machine,omitempty"`
 }
 
 // NewNode creates a new Node with the given configuration

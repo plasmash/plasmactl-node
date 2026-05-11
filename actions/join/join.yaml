@@ -10,7 +10,7 @@ action:
   options:
     - name: server-id
       title: Server ID
-      description: Provider-specific resource ID (e.g. Scaleway Dedibox server ID, AWS instance ID)
+      description: "Provider's canonical resource identifier (OVH: ns<N>.ip-<a>-<b>-<c>.net; Scaleway: sd-<N>). Used as the node yaml filename."
       type: string
       required: true
     - name: pool
@@ -20,9 +20,9 @@ action:
       required: true
     - name: hostname
       title: Hostname
-      description: Override auto-generated hostname (defaults to <platform>-<pool>-<next-index>)
+      description: Cluster-side hostname for the joined node (becomes the k8s node name). Authoritative — independent of provider-side display labels.
       type: string
-      default: ""
+      required: true
     - name: dry-run
       title: Dry Run
       description: Generate HCL and show plan but don't apply
@@ -31,6 +31,15 @@ action:
     - name: auto-approve
       title: Auto Approve
       description: Skip interactive approval before applying
+      type: boolean
+      default: false
+    - name: allow-destructive-update
+      title: Allow destructive update
+      description: |
+        Permit destructive in-place updates (e.g. OVH OS reinstall) under
+        --auto-approve. Has no effect without --auto-approve. Default behavior
+        when destructive updates appear is an interactive typed-"yes" prompt;
+        this flag is only required to proceed non-interactively.
       type: boolean
       default: false
   result:
