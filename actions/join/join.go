@@ -310,6 +310,11 @@ func (j *Join) Execute() error {
 	var disks []string
 	publicGateway := ""
 	publicPrefix := 0
+	// failoverIP starts from the TF output (Scaleway populates it via
+	// `scaleway_dedibox_failover_ip`; OVH leaves it empty). When the
+	// provider fetcher surfaces a discovered Additional IP, it wins —
+	// non-empty enrichment always overrides empty TF for this field.
+	failoverIP := joined.FailoverIP
 	if enriched != nil {
 		privateIP = enriched.PrivateIP
 		privateMAC = enriched.PrivateMAC
@@ -317,6 +322,9 @@ func (j *Join) Execute() error {
 		disks = enriched.Disks
 		publicGateway = enriched.PublicGateway
 		publicPrefix = enriched.PublicPrefix
+		if enriched.FailoverIP != "" {
+			failoverIP = enriched.FailoverIP
+		}
 	}
 
 	n := &node.Node{
@@ -325,7 +333,7 @@ func (j *Join) Execute() error {
 		Machine:  pool.Machine,
 		Network: node.Network{
 			PublicIP:      joined.PublicIP,
-			FailoverIP:    joined.FailoverIP,
+			FailoverIP:    failoverIP,
 			PrivateIP:     privateIP,
 			PublicMAC:     publicMAC,
 			PrivateMAC:    privateMAC,

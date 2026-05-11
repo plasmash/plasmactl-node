@@ -11,6 +11,7 @@ import (
 type fakeFetcher struct {
 	publicMAC, privateMAC string
 	disks                 []provisioner.DiskSpec
+	failoverIP            string
 }
 
 func (f *fakeFetcher) Fetch(ctx context.Context, serverID string) (*provisioner.NodeMetadata, error) {
@@ -18,6 +19,7 @@ func (f *fakeFetcher) Fetch(ctx context.Context, serverID string) (*provisioner.
 		PublicMAC:  f.publicMAC,
 		PrivateMAC: f.privateMAC,
 		Disks:      f.disks,
+		FailoverIP: f.failoverIP,
 	}, nil
 }
 
@@ -118,6 +120,37 @@ func TestEnrichNodeFields_NoFetcher_ReturnsError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when Fetcher is nil")
+	}
+}
+
+// Failover IP discovered by the OVH metadata fetcher must surface into
+// enrichOutput so join.go can write it into node.Network.FailoverIP. The
+// downstream Ansible plumbing (platform_nodes.py → failover_network /32
+// derivation → os_flatcar Flatcar networkd PreferredSource) is already in
+// place; this test pins the discovery → persistence boundary.
+func TestEnrichNodeFields_PassesFailoverIPThrough(t *testing.T) {
+	fetcher := &fakeFetcher{
+		publicMAC:  "AA:BB:CC:00:00:01",
+		privateMAC: "11:22:33:00:00:01",
+		disks:      []provisioner.DiskSpec{{Type: "NVMe", CapacityGB: 512}},
+		failoverIP: "203.0.113.7",
+	}
+	got, err := enrichNodeFields(context.Background(), enrichInput{
+		Provider:          "ovh",
+		PlatformName:      "example-plat",
+		ServerID:          "ns1.example.net",
+		VLANID:            7,
+		ExistingPrivateIP: "192.168.0.42",
+		PrivateNetwork:    "192.168.0.0/24",
+		NodesDir:          t.TempDir(),
+		Fetcher:           fetcher,
+		Reconciler:        &fakeReconciler{},
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got.FailoverIP != "203.0.113.7" {
+		t.Errorf("FailoverIP = %q, want 203.0.113.7", got.FailoverIP)
 	}
 }
 

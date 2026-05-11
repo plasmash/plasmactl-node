@@ -44,6 +44,7 @@ func (a *ovhMetadataFetcherAdapter) Fetch(ctx context.Context, serverID string) 
 		Disks:         disks,
 		PublicGateway: m.PublicGateway,
 		PublicPrefix:  m.PublicPrefix,
+		FailoverIP:    m.FailoverIP,
 	}, nil
 }
 

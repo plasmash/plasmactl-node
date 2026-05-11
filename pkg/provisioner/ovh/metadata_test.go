@@ -75,6 +75,22 @@ func fakeOVHServer(t *testing.T) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(body)
 	})
 
+	// GET /dedicated/server/{serverID}/ips
+	// Verified response shape: flat JSON array of CIDR strings — mixed
+	// IPv4 /32 + IPv6 /56. Primary IPv4 is the first entry that matches
+	// /specifications/network routing.ipv4.ip; any other IPv4 /32 is an
+	// Additional IP (typed `failover` post-2024 by OVH default). IPv6
+	// prefixes are ignored — no inbound ingress use case today. Test
+	// fixture uses RFC 5737 docs range 203.0.113.0/24 for the failover
+	// address and RFC 3849 docs range 2001:db8::/32 for IPv6.
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/ips", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]string{
+			"192.0.2.14/32",
+			"203.0.113.7/32",
+			"2001:db8:0:100::/56",
+		})
+	})
+
 	return httptest.NewServer(mux)
 }
 
@@ -153,6 +169,9 @@ func TestMetadataFetcher_Fetch_TBSize_ConvertsToGB(t *testing.T) {
 	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/specifications/network", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"routing": map[string]any{"ipv4": map[string]any{"gateway": "100.64.0.1"}}})
 	})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/ips", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]string{})
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -215,6 +234,9 @@ func TestMetadataFetcher_Fetch_PrivateLAG(t *testing.T) {
 	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/specifications/network", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"routing": map[string]any{"ipv4": map[string]any{"gateway": "100.64.0.1"}}})
 	})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/ips", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]string{})
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -226,6 +248,72 @@ func TestMetadataFetcher_Fetch_PrivateLAG(t *testing.T) {
 	}
 	if got.PrivateMAC != "11:22:33:00:00:01" {
 		t.Errorf("PrivateMAC = %q, want 11:22:33:00:00:01", got.PrivateMAC)
+	}
+}
+
+// Failover IP discovery via /dedicated/server/{name}/ips. The endpoint
+// returns a flat array of CIDR strings (primary v4, optional extras,
+// optional v6 prefix). The fetcher must filter out the primary and any
+// IPv6 entries, and surface the remaining IPv4 /32 as FailoverIP.
+func TestMetadataFetcher_Fetch_FailoverIP(t *testing.T) {
+	srv := fakeOVHServer(t)
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL + "/1.0"}
+	f := &MetadataFetcher{Client: c}
+
+	got, err := f.Fetch(context.Background(), "ns1.example.net")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got.FailoverIP != "203.0.113.7" {
+		t.Errorf("FailoverIP = %q, want 203.0.113.7 (the non-primary IPv4 /32 in /ips)", got.FailoverIP)
+	}
+}
+
+// When no Additional IP is routed to the server (just the primary v4 + v6
+// prefix), FailoverIP must be empty — not an error. This is the normal
+// state for non-ingress nodes.
+func TestMetadataFetcher_Fetch_FailoverIP_None(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/networkInterfaceController", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]string{"AA:BB:CC:00:00:01", "11:22:33:00:00:01"})
+	})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/networkInterfaceController/AA:BB:CC:00:00:01",
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]string{"linkType": "public", "mac": "AA:BB:CC:00:00:01"})
+		})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/networkInterfaceController/11:22:33:00:00:01",
+		func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]string{"linkType": "private", "mac": "11:22:33:00:00:01"})
+		})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/specifications/hardware", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"diskGroups": []map[string]any{}})
+	})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/specifications/network", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"routing": map[string]any{
+				"ipv4": map[string]any{"ip": "192.0.2.14", "gateway": "100.64.0.1"},
+			},
+		})
+	})
+	mux.HandleFunc("/1.0/dedicated/server/ns1.example.net/ips", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]string{
+			"192.0.2.14/32",
+			"2001:db8:0:100::/56",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL + "/1.0"}
+	f := &MetadataFetcher{Client: c}
+	got, err := f.Fetch(context.Background(), "ns1.example.net")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got.FailoverIP != "" {
+		t.Errorf("FailoverIP = %q, want empty when only primary + IPv6 are routed", got.FailoverIP)
 	}
 }
 

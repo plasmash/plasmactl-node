@@ -32,6 +32,15 @@ type NodeMetadata struct {
 	Disks         []DiskSpec
 	PublicGateway string
 	PublicPrefix  int
+	// FailoverIP is the first non-primary IPv4 routed to the server (OVH
+	// Additional IP / "failover" product). Empty when no extra IP is
+	// routed. Provider-specific: OVH populates from /dedicated/server/
+	// {name}/ips; other providers may surface a Scaleway-style TF output
+	// or leave empty. Downstream, the inventory plugin derives
+	// failover_network = "{ip}/32" and the os_flatcar Flatcar template
+	// attaches the /32 to the public NIC + sets PreferredSource on the
+	// default route.
+	FailoverIP string
 }
 
 // DiskSpec describes one physical disk on the server. Used to synthesize

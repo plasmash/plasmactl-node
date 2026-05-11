@@ -43,6 +43,12 @@ type enrichOutput struct {
 	// means the inventory plugin will fall back to derivation.
 	PublicGateway string
 	PublicPrefix  int
+	// FailoverIP is the first non-primary IPv4 routed to the server,
+	// surfaced by the provider's metadata fetcher (OVH: from /dedicated/
+	// server/{name}/ips). Empty when no extra IP is routed; callers
+	// should treat empty as "preserve any TF-output failover_ip" so the
+	// Scaleway TF path keeps working.
+	FailoverIP string
 }
 
 // enrichNodeFields runs the post-TF-apply enrichment. Returns populated
@@ -99,5 +105,6 @@ func enrichNodeFields(ctx context.Context, in enrichInput) (*enrichOutput, error
 		Disks:         disks,
 		PublicGateway: meta.PublicGateway,
 		PublicPrefix:  meta.PublicPrefix,
+		FailoverIP:    meta.FailoverIP,
 	}, nil
 }

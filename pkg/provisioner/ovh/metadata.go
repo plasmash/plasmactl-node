@@ -29,6 +29,12 @@ type NodeMetadata struct {
 	Disks         []DiskSpec
 	PublicGateway string
 	PublicPrefix  int
+	// FailoverIP is a non-primary IPv4 routed to the server (OVH Additional
+	// IP, typed `failover` server-side). Empty when no extra IP is routed.
+	// First non-primary v4 wins; IPv6 entries are ignored. Operator-driven
+	// product: ordered via OVH Manager and routed to a specific server at
+	// order time; discoverable post-provision via /dedicated/server/{name}/ips.
+	FailoverIP string
 }
 
 // MetadataFetcher implements provisioner.NodeMetadataFetcher for OVH.
@@ -59,7 +65,11 @@ func (f *MetadataFetcher) Fetch(ctx context.Context, serverID string) (*NodeMeta
 	if err != nil {
 		return nil, err
 	}
-	gw, err := f.fetchPublicGateway(ctx, serverID)
+	gw, primary, err := f.fetchPublicRouting(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	failover, err := f.fetchFailoverIP(ctx, serverID, primary)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +77,7 @@ func (f *MetadataFetcher) Fetch(ctx context.Context, serverID string) (*NodeMeta
 		Disks:         disks,
 		PublicGateway: gw,
 		PublicPrefix:  32, // OVH dedicated routes individual /32s on host regardless of routing.ipv4.network
+		FailoverIP:    failover,
 	}
 	for _, m := range macs {
 		switch {
@@ -143,26 +154,70 @@ func (f *MetadataFetcher) fetchDisks(ctx context.Context, serverID string) ([]Di
 	return out, nil
 }
 
-// fetchPublicGateway returns the IPv4 gateway from
-// /dedicated/server/{name}/specifications/network. OVH's response shape
-// is {routing: {ipv4: {network, ip, gateway}, ipv6: {...}}, ...}. We
-// only need the ipv4 gateway today; the rest (ipv6, OLA, vrack) is left
-// for a future caller. Errors if the response lacks a non-empty
-// routing.ipv4.gateway — without it there's no way to write a working
-// Flatcar default route.
-func (f *MetadataFetcher) fetchPublicGateway(ctx context.Context, serverID string) (string, error) {
-	var net struct {
+// fetchPublicRouting returns the IPv4 gateway and the primary IPv4 from
+// /dedicated/server/{name}/specifications/network. Response shape:
+// {routing: {ipv4: {network, ip, gateway}, ipv6: {...}}, ...}.
+//
+// Gateway is required (empty → error). Primary ip may be empty on legacy
+// responses; callers tolerating its absence should treat that as "cannot
+// detect failover IPs" rather than failing the whole fetch.
+//
+// The primary IPv4 (`routing.ipv4.ip`) is the bare host address — matches
+// the bare-string entry that /dedicated/server/{name}/ips returns once
+// stripped of its /32 suffix. That equivalence is what makes failover
+// discovery work without a second `/dedicated/server/{name}` summary call.
+func (f *MetadataFetcher) fetchPublicRouting(ctx context.Context, serverID string) (gateway, primary string, err error) {
+	var spec struct {
 		Routing struct {
 			IPv4 struct {
 				Gateway string `json:"gateway"`
+				IP      string `json:"ip"`
 			} `json:"ipv4"`
 		} `json:"routing"`
 	}
-	if err := f.Client.GetJSON(ctx, "/dedicated/server/"+serverID+"/specifications/network", &net); err != nil {
-		return "", fmt.Errorf("network spec: %w", err)
+	if err := f.Client.GetJSON(ctx, "/dedicated/server/"+serverID+"/specifications/network", &spec); err != nil {
+		return "", "", fmt.Errorf("network spec: %w", err)
 	}
-	if net.Routing.IPv4.Gateway == "" {
-		return "", fmt.Errorf("ovh: %s /specifications/network returned empty routing.ipv4.gateway", serverID)
+	if spec.Routing.IPv4.Gateway == "" {
+		return "", "", fmt.Errorf("ovh: %s /specifications/network returned empty routing.ipv4.gateway", serverID)
 	}
-	return net.Routing.IPv4.Gateway, nil
+	return spec.Routing.IPv4.Gateway, spec.Routing.IPv4.IP, nil
+}
+
+// fetchFailoverIP queries /dedicated/server/{name}/ips and returns the
+// first IPv4 entry that isn't the primary, stripped of its /32 suffix.
+// Returns "" with no error when no extra v4 is routed (normal state for
+// non-ingress nodes).
+//
+// Verified response shape: flat JSON array of CIDR strings — primary
+// IPv4 /32, optional additional IPv4 /32 entries, optional IPv6 /56
+// prefix, e.g.
+//
+//	["192.0.2.14/32","203.0.113.7/32","2001:db8:0:100::/56"]
+//
+// IPv6 prefixes are ignored — failover IP / Additional IP product is
+// IPv4-only on OVH dedicated, and inbound v6 ingress isn't in scope.
+// We don't probe /ip/service/ip-{addr} to confirm type=="failover"; the
+// listing is authoritative for routing, and the heuristic "any non-primary
+// v4 routed to this server" is more robust to OVH's evolving taxonomy
+// (Additional IPs default to type=failover post-2024 but the API enum
+// still permits other types). If we later need to discriminate between
+// failover (movable) and dedicated (sticky) additional IPs, that GET goes
+// here.
+func (f *MetadataFetcher) fetchFailoverIP(ctx context.Context, serverID, primary string) (string, error) {
+	var ips []string
+	if err := f.Client.GetJSON(ctx, "/dedicated/server/"+serverID+"/ips", &ips); err != nil {
+		return "", fmt.Errorf("list ips: %w", err)
+	}
+	for _, raw := range ips {
+		if strings.Contains(raw, ":") {
+			continue // IPv6 prefix
+		}
+		addr := strings.TrimSuffix(raw, "/32")
+		if addr == primary {
+			continue
+		}
+		return addr, nil
+	}
+	return "", nil
 }
