@@ -63,6 +63,13 @@ type VRackReconciler interface {
 	Reconcile(ctx context.Context, platformName string, vlanID int, serverID, privateMAC string) error
 }
 
+// DisplayNameFetcher reads the provider-side friendly name for a node.
+// Providers without a natural equivalent return (nil, nil) from the
+// constructor; callers treat nil as "no display-name source".
+type DisplayNameFetcher interface {
+	Fetch(ctx context.Context, serverID string) (string, error)
+}
+
 // Config carries everything the factories need to wire up the right impl.
 type Config struct {
 	Provider string
@@ -89,6 +96,15 @@ func NewVRackReconciler(ctx context.Context, cfg Config) (VRackReconciler, error
 	switch cfg.Provider {
 	case "ovh":
 		return newOVHVRackReconciler(ctx, cfg)
+	default:
+		return nil, nil
+	}
+}
+
+func NewDisplayNameFetcher(ctx context.Context, cfg Config) (DisplayNameFetcher, error) {
+	switch cfg.Provider {
+	case "ovh":
+		return newOVHDisplayNameFetcher(ctx, cfg)
 	default:
 		return nil, nil
 	}
