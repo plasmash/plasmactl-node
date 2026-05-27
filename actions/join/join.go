@@ -24,6 +24,15 @@ import (
 // expected as path parameter on /dedicated/server/{serviceName}).
 var ovhServiceNameRE = regexp.MustCompile(`^ns\d+\.ip-(\d{1,3}-){2}\d{1,3}\.net$`)
 
+// rfc1123LabelRe matches a valid RFC 1123 DNS label: lowercase alphanumeric,
+// with hyphens allowed in the middle, 1-63 characters total.
+var rfc1123LabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// validHostnameLabel reports whether s is a valid RFC 1123 DNS label.
+func validHostnameLabel(s string) bool {
+	return rfc1123LabelRe.MatchString(s)
+}
+
 // JoinResult is the structured output for node:join.
 type JoinResult struct {
 	Hostname  string   `json:"hostname"`
@@ -102,11 +111,39 @@ func (j *Join) Execute() error {
 		return fmt.Errorf("server_id %q already joined as node %s (%s)", j.ServerID, existing, file)
 	}
 
-	if strings.TrimSpace(j.Hostname) == "" {
-		return fmt.Errorf("--hostname is required (cluster-side hostname for the joined node)")
+	credsConfig, err := resolveProviderCreds(context.Background(), platform, platformDir, j.Keyring)
+	if err != nil {
+		return err
 	}
 
-	nodeFile := filepath.Join(nodesDir, j.ServerID+".yaml")
+	// --- Hostname resolution chain ---
+	dnCfg := nodeprov.Config{
+		Provider: platform.Infrastructure.MetalProvider,
+		Keyring:  j.Keyring,
+	}
+	dnFetcher, err := nodeprov.NewDisplayNameFetcher(context.Background(), dnCfg)
+	if err != nil {
+		return fmt.Errorf("init display-name fetcher: %w", err)
+	}
+
+	effectiveHostname := j.Hostname // rung 1: explicit flag wins
+	if effectiveHostname != "" && !validHostnameLabel(effectiveHostname) {
+		return fmt.Errorf("--hostname %q is not a valid RFC 1123 label (lowercase alphanumeric + hyphens, 1-63 chars)", j.Hostname)
+	}
+	if effectiveHostname == "" && dnFetcher != nil {
+		if dn, ferr := dnFetcher.Fetch(context.Background(), j.ServerID); ferr == nil && dn != "" {
+			if validHostnameLabel(dn) {
+				effectiveHostname = dn // rung 2: provider display name
+			}
+		} else if ferr != nil {
+			j.Term().Warning().Printfln("display-name fetch failed: %v (falling back to canonical name)", ferr)
+		}
+	}
+	if effectiveHostname == "" {
+		effectiveHostname = j.ServerID // rung 3: canonical fallback
+	}
+
+	nodeFile := filepath.Join(nodesDir, effectiveHostname+".yaml")
 	if _, err := os.Stat(nodeFile); !os.IsNotExist(err) {
 		return fmt.Errorf("node yaml for server-id %q already exists at %s", j.ServerID, nodeFile)
 	}
@@ -118,7 +155,7 @@ func (j *Join) Execute() error {
 	// Stub node YAML — minimal data needed for the provisioner to discover
 	// the pending adoption via scanExistingNodes.
 	stub := &node.Node{
-		Hostname: j.Hostname,
+		Hostname: effectiveHostname,
 		Zones:    pool.Zones,
 		Machine:  pool.Machine,
 		ProviderMetadata: node.ProviderMetadata{
@@ -148,12 +185,7 @@ func (j *Join) Execute() error {
 		}
 	}()
 
-	j.Term().Info().Printfln("Joining server %q into pool %q as %s", j.ServerID, j.Pool, j.Hostname)
-
-	credsConfig, err := resolveProviderCreds(context.Background(), platform, platformDir, j.Keyring)
-	if err != nil {
-		return err
-	}
+	j.Term().Info().Printfln("Joining server %q into pool %q as %s", j.ServerID, j.Pool, effectiveHostname)
 
 	existingNodes := scanExistingForJoin(nodesDir, platform.Pools)
 
@@ -221,7 +253,7 @@ func (j *Join) Execute() error {
 	if j.DryRun {
 		j.Term().Warning().Println("Dry run — skipping apply")
 		j.result = &JoinResult{
-			Hostname: j.Hostname,
+			Hostname: effectiveHostname,
 			Platform: j.Platform,
 			Pool:     j.Pool,
 			ServerID: j.ServerID,
@@ -328,7 +360,7 @@ func (j *Join) Execute() error {
 	}
 
 	n := &node.Node{
-		Hostname: j.Hostname, // operator-provided, authoritative
+		Hostname: effectiveHostname,
 		Zones:    pool.Zones,
 		Machine:  pool.Machine,
 		Network: node.Network{
@@ -343,7 +375,7 @@ func (j *Join) Execute() error {
 		Disks: disks,
 		ProviderMetadata: node.ProviderMetadata{
 			Provider: platform.Infrastructure.MetalProvider,
-			ServerID: j.ServerID, // canonical, == filename
+			ServerID: j.ServerID,
 			Zone:     joined.Zone,
 			Region:   joined.Region,
 			Machine:  joined.Machine,
@@ -360,7 +392,7 @@ func (j *Join) Execute() error {
 	}
 	committed = true
 
-	j.Term().Success().Printfln("Joined %s (server_id=%s)", j.Hostname, j.ServerID)
+	j.Term().Success().Printfln("Joined %s (server_id=%s)", effectiveHostname, j.ServerID)
 	j.Term().Info().Printfln("  Public IP:  %s", joined.PublicIP)
 	if privateIP != "" {
 		j.Term().Info().Printfln("  Private IP: %s", privateIP)
@@ -369,7 +401,7 @@ func (j *Join) Execute() error {
 	j.Term().Info().Printfln("  File:       %s", nodeFile)
 
 	j.result = &JoinResult{
-		Hostname:  j.Hostname,
+		Hostname:  effectiveHostname,
 		Platform:  j.Platform,
 		Pool:      j.Pool,
 		ServerID:  j.ServerID,
@@ -481,6 +513,7 @@ func scanExistingForJoin(nodesDir string, pools map[string]schema.Pool) []provis
 		byPool[poolName] = append(byPool[poolName], provisioner.ExistingNode{
 			Pool:     poolName,
 			ImportID: n.ProviderMetadata.ServerID,
+			Hostname: n.Hostname,
 		})
 	}
 

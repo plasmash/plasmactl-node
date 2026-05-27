@@ -20,9 +20,13 @@ action:
       required: true
     - name: hostname
       title: Hostname
-      description: Cluster-side hostname for the joined node (becomes the k8s node name). Authoritative — independent of provider-side display labels.
+      description: |
+        Friendly hostname for the joined node. If omitted, the provider's
+        display-name (OVH iam.displayName) is used when set, otherwise falls
+        back to the canonical server-id. When provided explicitly, the value
+        is also written back to the provider via Terraform apply.
       type: string
-      required: true
+      required: false
     - name: dry-run
       title: Dry Run
       description: Generate HCL and show plan but don't apply

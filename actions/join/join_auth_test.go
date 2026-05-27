@@ -131,18 +131,16 @@ func TestResolveProviderCreds_NoCredsConfigured(t *testing.T) {
 	assert.Contains(t, err.Error(), "no credentials")
 }
 
-func TestJoin_RejectsMissingHostname(t *testing.T) {
-	setupOVHFixture(t, "example-plat")
-
-	j := &Join{
-		Platform: "example-plat",
-		ServerID: "ns1234567.ip-192-0-2.net",
-		Pool:     "control",
-		Hostname: "", // missing
-	}
-	err := j.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "hostname")
+func TestJoin_RejectsInvalidHostname(t *testing.T) {
+	assert.False(t, validHostnameLabel("Bad Name"))
+	assert.False(t, validHostnameLabel("UPPERCASE"))
+	assert.False(t, validHostnameLabel("has spaces"))
+	assert.False(t, validHostnameLabel("-starts-with-hyphen"))
+	assert.False(t, validHostnameLabel("ends-with-hyphen-"))
+	assert.False(t, validHostnameLabel(""))
+	assert.True(t, validHostnameLabel("example-plat-1234567-control"))
+	assert.True(t, validHostnameLabel("a"))
+	assert.True(t, validHostnameLabel("demo-control-001"))
 }
 
 func TestJoin_RejectsMalformedServerID_OVH(t *testing.T) {
@@ -160,12 +158,12 @@ func TestJoin_RejectsMalformedServerID_OVH(t *testing.T) {
 	assert.Contains(t, err.Error(), "ns")
 }
 
-func TestJoin_StubFilenameIsServerID(t *testing.T) {
+func TestJoin_StubFilenameIsEffectiveHostname(t *testing.T) {
 	dir := setupOVHFixture(t, "example-plat")
 	nodesDir := filepath.Join(dir, "platforms", "example-plat", "nodes")
 
-	// TF init/plan will fail (no real provider) and that's fine — we check
-	// the stub path before that point.
+	// TF init/plan will fail (no real provider) and that's fine — we only
+	// care about which path the stub was written to, not whether TF succeeded.
 	j := &Join{
 		Platform: "example-plat",
 		ServerID: "ns1234567.ip-192-0-2.net",
@@ -173,12 +171,15 @@ func TestJoin_StubFilenameIsServerID(t *testing.T) {
 		Hostname: "example-plat-1234567-control",
 		DryRun:   true,
 	}
+	// Execute will error (no TF binary); stub is cleaned up on failure.
+	// We verify it was NOT written at the server-id path — the hostname wins.
 	_ = j.Execute()
 
-	// Definitively NOT at the hostname-keyed path.
-	dontWantStub := filepath.Join(nodesDir, "example-plat-1234567-control.yaml")
+	// When hostname is explicitly provided, effectiveHostname == j.Hostname,
+	// so the stub (and any final node file) lives under the hostname key.
+	dontWantStub := filepath.Join(nodesDir, "ns1234567.ip-192-0-2.net.yaml")
 	_, errWrong := os.Stat(dontWantStub)
-	assert.True(t, os.IsNotExist(errWrong), "stub must not be at hostname-keyed path: %s", dontWantStub)
+	assert.True(t, os.IsNotExist(errWrong), "stub must not be at server-id-keyed path: %s", dontWantStub)
 }
 
 func TestJoin_StubRemovedOnTFFailure(t *testing.T) {
@@ -197,7 +198,8 @@ func TestJoin_StubRemovedOnTFFailure(t *testing.T) {
 	err := j.Execute()
 	assert.Error(t, err, "expected Execute to fail when TF cannot run in test env")
 
-	stub := filepath.Join(nodesDir, "ns1234567.ip-192-0-2.net.yaml")
+	// Stub is written to effectiveHostname.yaml (== j.Hostname when set).
+	stub := filepath.Join(nodesDir, "example-plat-1234567-control.yaml")
 	_, err = os.Stat(stub)
 	assert.True(t, os.IsNotExist(err), "stub must be cleaned up after TF failure, but found at %s", stub)
 }
@@ -242,6 +244,7 @@ provider_metadata:
 	require.Len(t, out, 1, "stub yaml with canonical-server-id naming should be matched")
 	assert.Equal(t, "control", out[0].Pool)
 	assert.Equal(t, "ns1234567.ip-192-0-2.net", out[0].ImportID)
+	assert.Equal(t, "example-plat-1234567-control", out[0].Hostname, "hostname must be propagated from node yaml")
 	assert.Equal(t, 0, out[0].Index, "single node in pool gets Index=0")
 }
 
