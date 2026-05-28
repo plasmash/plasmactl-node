@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/launchrctl/keyring"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/plasmash/plasmactl-platform/pkg/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -141,6 +142,39 @@ func TestJoin_RejectsInvalidHostname(t *testing.T) {
 	assert.True(t, validHostnameLabel("example-plat-1234567-control"))
 	assert.True(t, validHostnameLabel("a"))
 	assert.True(t, validHostnameLabel("demo-control-001"))
+}
+
+// TestJoinYAML_HostnameOptionHasStringDefault guards a regression: --hostname
+// is optional (required: false), and launchr only substitutes an omitted
+// option with its Default when Default != nil (see setParamDefaults). Without
+// `default: ""` in join.yaml, an omitted --hostname resolves to nil, and
+// plugin.go's `input.Opt("hostname").(string)` panics with
+// "interface conversion: interface {} is nil, not string". This test parses
+// the real join.yaml and performs the same assertion plugin.go does.
+func TestJoinYAML_HostnameOptionHasStringDefault(t *testing.T) {
+	joinYaml, err := os.ReadFile("join.yaml")
+	require.NoError(t, err)
+
+	act := action.NewFromYAML("node:join", joinYaml)
+	def := act.ActionDef()
+
+	var hostnameOpt *action.DefParameter
+	for _, o := range def.Options {
+		if o.Name == "hostname" {
+			hostnameOpt = o
+			break
+		}
+	}
+	require.NotNil(t, hostnameOpt, "join.yaml must declare a hostname option")
+
+	// The exact assertion plugin.go performs on the resolved option value.
+	// Must yield a string, not nil — otherwise node:join panics when
+	// --hostname is omitted.
+	_, ok := hostnameOpt.Default.(string)
+	assert.Truef(t, ok,
+		"hostname option must declare a string default (got %T: %v); "+
+			"without it, node:join panics when --hostname is omitted",
+		hostnameOpt.Default, hostnameOpt.Default)
 }
 
 func TestJoin_RejectsMalformedServerID_OVH(t *testing.T) {

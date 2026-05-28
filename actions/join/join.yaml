@@ -27,6 +27,7 @@ action:
         is also written back to the provider via Terraform apply.
       type: string
       required: false
+      default: ""
     - name: dry-run
       title: Dry Run
       description: Generate HCL and show plan but don't apply
