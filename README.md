@@ -51,6 +51,33 @@ Options:
 - `--dry-run`: Preview infrastructure changes without applying
 - `--auto-approve`: Skip confirmation prompts
 
+### node:join
+
+Adopt an existing provider resource into a pool (no new infrastructure is created — the server is imported into Terraform state and enriched with provider metadata):
+
+```bash
+# Friendly hostname auto-discovered from the provider (OVH iam.displayName)
+plasmactl node:join myplatform \
+  --server-id ns1234567.ip-192-0-2-1.net \
+  --pool control
+
+# Operator-chosen friendly hostname (also synced back to the provider)
+plasmactl node:join myplatform \
+  --server-id ns1234567.ip-192-0-2-1.net \
+  --pool control \
+  --hostname myplatform-control-001
+```
+
+Options:
+- `--server-id`: Provider's canonical resource identifier (OVH: `ns<N>.ip-<a>-<b>-<c>.net`; Scaleway: `sd-<N>`). Stored in `provider_metadata.server_id` and used for all provider API calls and the TF import target (required).
+- `--pool`: Pool name in `platform.yaml` to attach the node to (required).
+- `--hostname`: Friendly hostname (optional). Resolution order: (1) this flag, (2) the provider's display name (OVH `iam.displayName`) when set, (3) canonical fallback to `server-id`. The resolved name becomes the node yaml filename, the `hostname:` field, the Linux `/etc/hostname`, the Ansible play headers, and the SSH prompt. When set explicitly, it is also written back to the provider via Terraform.
+- `--dry-run`: Generate HCL and show the plan but don't apply.
+- `--auto-approve`: Skip interactive approval before applying.
+- `--allow-destructive-update`: Permit destructive in-place updates under `--auto-approve` (no effect otherwise).
+
+`provider_metadata.server_id` remains the stable identity anchor; the friendly hostname is a UX layer on top, so renaming the file never breaks provider lookups.
+
 ### node:register
 
 Manually register a node:
