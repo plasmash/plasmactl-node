@@ -4,11 +4,11 @@ go 1.25.0
 
 require (
 	github.com/launchrctl/keyring v0.9.1
-	github.com/launchrctl/launchr v0.22.0
-	github.com/plasmash/plasmactl-auth v0.0.0-00010101000000-000000000000
-	github.com/plasmash/plasmactl-component v1.2.3
-	github.com/plasmash/plasmactl-platform v1.5.1
-	github.com/plasmash/plasmactl-zone v1.0.20
+	github.com/launchrctl/launchr v0.23.0
+	github.com/plasmash/plasmactl-auth v0.1.0
+	github.com/plasmash/plasmactl-component v1.3.0
+	github.com/plasmash/plasmactl-platform v1.8.0
+	github.com/plasmash/plasmactl-zone v1.2.0
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -86,7 +86,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/plasmash/plasmactl-model v1.6.0 // indirect
+	github.com/plasmash/plasmactl-model v1.8.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/pterm/pterm v0.12.82 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
@@ -130,15 +130,3 @@ require (
 
 // Resolve ambiguous import for genproto split modules
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20241007155032-5fefd90f89a9
-
-replace github.com/plasmash/plasmactl-auth => ../plasmactl-auth
-
-replace github.com/plasmash/plasmactl-component => ../plasmactl-component
-
-replace github.com/plasmash/plasmactl-zone => ../plasmactl-zone
-
-replace github.com/plasmash/plasmactl-platform => ../plasmactl-platform
-
-replace github.com/plasmash/plasmactl-model => ../plasmactl-model
-
-replace github.com/launchrctl/launchr => ../launchr
