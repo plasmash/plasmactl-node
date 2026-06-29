@@ -78,12 +78,12 @@ Options:
 
 `provider_metadata.server_id` remains the stable identity anchor; the friendly hostname is a UX layer on top, so renaming the file never breaks provider lookups.
 
-### node:register
+### node:add
 
 Manually register a node:
 
 ```bash
-plasmactl node:register myplatform \
+plasmactl node:add myplatform \
   --hostname server1 \
   --public-ip 51.159.x.x \
   --private-ip 192.168.1.10 \
